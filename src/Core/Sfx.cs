@@ -44,6 +44,28 @@ public partial class Sfx : Node
         }
     }
 
+    public override void _ExitTree()
+    {
+        // Drop every stream reference explicitly. These are RefCounted
+        // resources held by a managed dictionary, and C# finalisation is not
+        // guaranteed to run before the engine tears down its resource
+        // registry — without this, Godot reports them as leaked at exit.
+        foreach (AudioStreamPlayer voice in _voices)
+        {
+            voice.Stop();
+            voice.Stream = null;
+        }
+
+        // Disposing releases the native reference immediately. Merely dropping
+        // the managed reference would wait on the GC, which is not guaranteed
+        // to run before the engine tears down its resource registry.
+        foreach (AudioStream clip in _clips.Values)
+            clip.Dispose();
+
+        _voices.Clear();
+        _clips.Clear();
+    }
+
     /// <summary>Plays a clip if it was generated; otherwise does nothing.</summary>
     /// <param name="volumeDb">Attenuation in decibels, relative to the clip.</param>
     public void Play(string name, float volumeDb = 0.0f)
