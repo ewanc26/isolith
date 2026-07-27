@@ -39,7 +39,16 @@ jobs:
 
           curl -fsSL -o godot.zip "$url"
           unzip -q godot.zip
-          echo "GODOT=$PWD/${base}/${base}" >> "$GITHUB_ENV"
+
+          # The archive's directory and its executable are named slightly
+          # differently (".x86_64" vs "_x86_64"), so locate the binary rather
+          # than reconstructing its name.
+          godot="$(find "$PWD/${base}" -maxdepth 1 -type f -name 'Godot_v*' | head -n 1)"
+          test -n "$godot" || { echo "Godot binary not found in ${base}/"; ls -la "${base}"; exit 1; }
+
+          chmod +x "$godot"
+          "$godot" --version
+          echo "GODOT=$godot" >> "$GITHUB_ENV"
 
       - name: Build
         run: dotnet build --configuration Debug
