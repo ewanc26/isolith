@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  GODOT_VERSION: "4.7"
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+
+jobs:
+  build:
+    name: Build and smoke test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Install Godot ${{ env.GODOT_VERSION }} (.NET)
+        run: |
+          set -euo pipefail
+          base="Godot_v${GODOT_VERSION}-stable_mono_linux_x86_64"
+          url="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/${base}.zip"
+
+          curl -fsSL -o godot.zip "$url"
+          unzip -q godot.zip
+          echo "GODOT=$PWD/${base}/${base}" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: dotnet build --configuration Debug
+
+      - name: Import project
+        # The first headless run populates .godot/; it is expected to be slow
+        # and is separated so an import failure is distinguishable from a
+        # test failure.
+        run: |
+          "$GODOT" --headless --path . --import --quit-after 600 || true
+
+      - name: Smoke test
+        # Loads every course, builds it, and verifies the spawn, checkpoints,
+        # and goal all sit on solid ground. Exits non-zero on any failure.
+        run: "$GODOT" --headless --path . res://scenes/Smoke.tscn
+
+      - name: Verify generated assets are reproducible
+        # The audio generator is deterministic. If regenerating changes a file,
+        # either the generator drifted or a WAV was hand-edited.
+        run: |
+          python3 tools/generate_assets.py
+          git diff --exit-code -- assets/
