@@ -38,7 +38,67 @@ If you find yourself writing `if (syncFailed) { …gameplay change… }`, stop.
 
 ---
 
-## 2. Orientation
+## 2. Languages
+
+Three languages appear in this repository. The split between them is strict.
+
+| Language | Used for | Never used for |
+| --- | --- | --- |
+| **C#** | Every line of runtime game code | — |
+| **GDScript** | Editor-only tooling (`@tool` scripts, `EditorPlugin`s under `addons/`) | Anything the running game loads |
+| **Python** | Repository tooling under `tools/`, and CI | Anything at game runtime, or any build step the game needs |
+
+### C# is the game
+
+**All runtime code is C#, without exception.** Gameplay, level building, UI,
+interop, and the smoke test all live in one assembly under `src/`.
+
+This is not a stylistic preference:
+
+- The sync module talks to a native C library. `LibraryImport` P/Invoke,
+  `SafeHandle` ownership, and `CLong`/`nuint` marshalling have no GDScript
+  equivalent — that code *must* be C#, and splitting the rest away from it
+  would put a language boundary through the middle of the project.
+- One assembly means one type system and compile-time checking across every
+  module. A `RunStats` passed from gameplay to sync is checked by the compiler,
+  not discovered at runtime.
+- The smoke test drives real gameplay types directly. Across a script boundary
+  it could only poke at them through `Variant`.
+
+### GDScript is for the editor, and nothing else
+
+If GDScript is added, it lives under `addons/` and runs **only inside the Godot
+editor** — import plugins, inspector tooling, a course previewer. It is never
+attached to a node the game instantiates and is never called from C# at runtime.
+
+The reason for allowing it there at all: an editor plugin written in GDScript
+reloads the moment you save it, whereas a C# `[Tool]` script needs an assembly
+rebuild and usually an editor restart. That difference matters for tooling you
+iterate on and matters not at all for code that ships.
+
+**There is currently no GDScript in this repository.** That is the default
+state, not an accident. Adding some requires a reason that fits the box above.
+
+### Python is tooling, never runtime
+
+`tools/generate_assets.py` is a development script. It uses the standard library
+only, and its output is **committed**, so:
+
+- the game builds and runs on a machine with no Python installed;
+- Python is never a build dependency, only a regeneration convenience;
+- CI can verify the committed output still matches the generator.
+
+### Explicitly not allowed
+
+- Game logic split across C# and GDScript. Two type systems, `Variant`
+  marshalling at every call, and no compile-time checking across the seam.
+- Calling GDScript from C# (or the reverse) in anything the game loads.
+- Python as a runtime or build-time dependency of the game.
+- Shipping a generated artefact that is not committed alongside its generator.
+
+---
+
+## 3. Orientation
 
 ```bash
 dotnet build                                              # compile
@@ -59,10 +119,11 @@ compile C# itself.
 
 ---
 
-## 3. Layout
+## 4. Layout
 
 ```
 .github/workflows/ci.yml   Build + smoke test + asset reproducibility
+addons/                    Editor-only plugins (GDScript lives here, if ever)
 assets/audio/              Generated WAVs (committed, reproducible)
 courses/                   Level data
 lexicons/                  AT Protocol record schemas
@@ -101,7 +162,7 @@ exception for a test harness, not a licence to add more.
 
 ---
 
-## 4. Module notes
+## 5. Module notes
 
 ### `src/Core/GameInput.cs`
 
@@ -187,7 +248,7 @@ else, put it here instead.
 
 ### `src/Gameplay/PlayerController.cs`
 
-The most tuning-sensitive file. See §5 for the numbers.
+The most tuning-sensitive file. See §6 for the numbers.
 
 Input is interpreted in the **camera's** frame, not the world's, via
 `Camera.Yaw`. Without that, a 45°-rotated view makes every direction diagonal.
@@ -238,7 +299,7 @@ so typing a handle into a text field doesn't also make the character jump.
 
 ### `src/Sync/`
 
-See §7. Structure:
+See §8. Structure:
 
 | File | Tier |
 | --- | --- |
@@ -258,7 +319,7 @@ grows past a few panels, revisit this — it is a pragmatic choice, not dogma.
 
 ---
 
-## 5. The physics envelope
+## 6. The physics envelope
 
 These derive from `PlayerController`'s exported defaults. **If you change the
 tuning, recompute these and update `README.md`, because course design depends
@@ -300,7 +361,7 @@ sluggish.
 
 ---
 
-## 6. Course format
+## 7. Course format
 
 A course is a JSON object in `courses/`. All positions are **centres**; all
 sizes are **full extents**. A block's walkable surface is at
@@ -338,7 +399,7 @@ Adding a course means dropping the file in `courses/`. The smoke test discovers
 
 ---
 
-## 7. Interop rules (`src/Sync/Interop/`)
+## 8. Interop rules (`src/Sync/Interop/`)
 
 This is the only unsafe part of the codebase. Get it wrong and you get memory
 corruption, not an exception.
@@ -388,7 +449,7 @@ belongs in the C SDK.
 
 ---
 
-## 8. Threading
+## 9. Threading
 
 Godot's scene tree is **main-thread only**.
 
@@ -408,7 +469,7 @@ Rules:
 
 ---
 
-## 9. Assets
+## 10. Assets
 
 **No third-party art, audio, fonts, or models. Ever.** See
 [`ASSETS.md`](ASSETS.md) for the full record.
@@ -424,7 +485,7 @@ CC0/public-domain with its provenance added to `ASSETS.md`.
 
 ---
 
-## 10. Testing
+## 11. Testing
 
 `scenes/Smoke.tscn` → `src/Core/SmokeTest.cs`. Headless, so it runs in CI.
 
@@ -441,10 +502,10 @@ harness. It is cheap and it already has a real scene running.
 
 ---
 
-## 11. Conventions
+## 12. Conventions
 
-- **C# 12+, nullable enabled, `AllowUnsafeBlocks`** (required by
-  `LibraryImport`'s source generator).
+- **C# for all runtime code** — see §2. C# 12+, nullable enabled, and
+  `AllowUnsafeBlocks` (required by `LibraryImport`'s source generator).
 - Godot node classes are `[GlobalClass] public partial class`. Godot's source
   generator requires `partial`.
 - One public type per file, named after the file.
@@ -473,7 +534,7 @@ Commit by scope — one logical change per commit, not one commit per session.
 
 ---
 
-## 12. Common tasks
+## 13. Common tasks
 
 **Add a block kind**
 1. Add to `BlockKind` in `Course.cs`.
@@ -481,33 +542,33 @@ Commit by scope — one logical change per commit, not one commit per session.
 3. Handle it in `CourseBuilder.AddBlock`.
 4. If it needs behaviour on contact, prefer metadata + a check in the relevant
    system over new logic in `PlayerController`.
-5. Document it in §6 and in `README.md`.
+5. Document it in §7 and in `README.md`.
 
 **Add a course**
 Drop the JSON in `courses/`, then run the smoke test. It is discovered
 automatically.
 
 **Retune the player**
-Change the exported defaults, then recompute §5 and update `README.md`. Existing
+Change the exported defaults, then recompute §6 and update `README.md`. Existing
 course times are not invalidated by tuning changes — only course *edits* change
 the hash — so consider whether a tuning change should be paired with a course
 version bump.
 
 **Add a sync operation**
-Follow §7's four steps. Keep it out of `Gameplay`.
+Follow §8's four steps. Keep it out of `Gameplay`.
 
 ---
 
-## 13. Things that look wrong but are not
+## 14. Things that look wrong but are not
 
-- **`GameInput` registering bindings in code.** Deliberate; see §4.
+- **`GameInput` registering bindings in code.** Deliberate; see §5.
 - **The `-2.0` grounded velocity in `PlayerController`.** Keeps `IsOnFloor()`
   stable. Removing it breaks coyote time.
 - **`IsometricCamera.Yaw` returning the target, not the current, yaw.** Keeps
   held input meaningful during a rotation.
 - **`Course` fully qualified as `Level.Course.Load(…)` in `GameManager`.** The
   property and the type share a name; the qualification is for the reader.
-- **UI built in C# instead of `.tscn`.** See §4.
+- **UI built in C# instead of `.tscn`.** See §5.
 - **`native/*.dylib` gitignored.** The SDK is built from its own repo, not
   vendored.
 - **`_ = RunAsync()` in `SmokeTest._Ready()`.** Godot cannot `await` in
@@ -516,7 +577,7 @@ Follow §7's four steps. Keep it out of `Gameplay`.
 
 ---
 
-## 14. Related
+## 15. Related
 
 - [wolfram](https://github.com/ewanc26/wolfram) — the C11 AT Protocol SDK this
   syncs through.

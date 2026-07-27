@@ -39,18 +39,21 @@ CI runs exactly these.
 
 ## Things worth knowing
 
+- **All runtime code is C#.** GDScript is reserved for editor-only tooling under
+  `addons/`, and Python is for repository tooling in `tools/` — never for
+  anything the game loads or needs to build. See §2 of [`AGENTS.md`](AGENTS.md).
 - **Assets must be generated or hand-authored as source text.** No imported art,
   audio, models, or fonts. See [`ASSETS.md`](ASSETS.md).
 - **Sync must never be load-bearing.** The game plays identically without a
   network, an account, or `libwolfram`.
 - **Interop is the sharp edge.** If you are touching `src/Sync/Interop/`, read
-  §7 of `AGENTS.md` first — string ownership and struct layout there are not
+  §8 of `AGENTS.md` first — string ownership and struct layout there are not
   forgiving.
 - **Changing player tuning changes level design.** Recompute the jump envelope
-  in §5 of `AGENTS.md` and update the README.
+  in §6 of `AGENTS.md` and update the README.
 
 ## Levels
 
-New courses are welcome. Drop a JSON file in `courses/`; the format is in §6 of
+New courses are welcome. Drop a JSON file in `courses/`; the format is in §7 of
 `AGENTS.md`. Run the smoke test — it will tell you if the spawn, a checkpoint,
 or the goal ends up hanging over nothing.

@@ -156,7 +156,12 @@ src/UI/         HUD and sync panel
 tools/          Asset generator
 ```
 
-`AGENTS.md` has the full architecture notes, invariants, and conventions.
+All runtime code is C#. GDScript is reserved for editor-only tooling, and
+Python is repository tooling only — the game builds and runs without it, since
+generated assets are committed.
+
+`AGENTS.md` has the full architecture notes, the language policy, the invariants,
+and the conventions.
 
 ## Licence
 
