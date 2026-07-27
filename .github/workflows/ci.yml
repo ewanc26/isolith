@@ -54,7 +54,8 @@ jobs:
       - name: Smoke test
         # Loads every course, builds it, and verifies the spawn, checkpoints,
         # and goal all sit on solid ground. Exits non-zero on any failure.
-        run: "$GODOT" --headless --path . res://scenes/Smoke.tscn
+        run: |
+          "$GODOT" --headless --path . res://scenes/Smoke.tscn
 
       - name: Verify generated assets are reproducible
         # The audio generator is deterministic. If regenerating changes a file,
