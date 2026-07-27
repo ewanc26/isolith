@@ -1,0 +1,74 @@
+{
+  "lexicon": 1,
+  "$type": "com.atproto.lexicon.schema",
+  "id": "uk.ewancroft.isolith.run",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A single completed attempt at an Isolith course. Written to the player's own repo when optional stat sync is enabled; the game never requires it.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["courseId", "courseHash", "timeMs", "completed", "createdAt"],
+        "properties": {
+          "courseId": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "Identifier of the course, e.g. 'ascent'."
+          },
+          "courseHash": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "Lowercase hex SHA-256 of the course JSON. Times are only comparable within a single hash: editing a course changes it, so old runs stay attached to the layout they were set on."
+          },
+          "timeMs": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Elapsed run time in milliseconds."
+          },
+          "completed": {
+            "type": "boolean",
+            "description": "Whether the goal was reached. False records are permitted so partial attempts can be tracked."
+          },
+          "deaths": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Times the player was returned to a checkpoint."
+          },
+          "jumps": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Jumps performed, including bounce-pad launches."
+          },
+          "shards": {
+            "type": "ref",
+            "ref": "#shardCount",
+            "description": "Collectibles gathered during the run."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "When the run started."
+          }
+        }
+      }
+    },
+    "shardCount": {
+      "type": "object",
+      "required": ["collected", "total"],
+      "properties": {
+        "collected": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Shards collected during this run."
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Shards present in the course at the time of the run."
+        }
+      }
+    }
+  }
+}
