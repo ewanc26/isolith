@@ -1,0 +1,18 @@
+# Godot
+.godot/
+/android/
+export_presets.cfg
+
+# .NET
+bin/
+obj/
+*.user
+*.swp
+
+# Native SDK — see native/README.md; built from the wolfram repo, not vendored.
+native/*.dylib
+native/*.so
+native/*.dll
+
+# macOS
+.DS_Store

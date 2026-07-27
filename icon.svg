@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Isolith icon. Hand-authored: an isometric cube drawn at the same
+       projection the in-game camera uses (yaw 45deg, pitch atan(1/sqrt2)),
+       so the three visible faces are equally foreshortened. -->
+  <rect width="128" height="128" rx="24" fill="#1b2033"/>
+  <g transform="translate(64 70)">
+    <!-- top face -->
+    <path d="M0-36 36-15 0 6-36-15Z" fill="#8b95b2"/>
+    <!-- left face -->
+    <path d="M-36-15 0 6 0 42-36 21Z" fill="#4d5772"/>
+    <!-- right face -->
+    <path d="M36-15 0 6 0 42 36 21Z" fill="#6d7794"/>
+  </g>
+  <!-- collectible shard, the game's accent colour -->
+  <path d="M64 20 71 32 64 44 57 32Z" fill="#ffd479"/>
+</svg>

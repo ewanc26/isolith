@@ -1,0 +1,10 @@
+* text=auto eol=lf
+
+*.wav binary
+*.png binary
+*.dylib binary
+*.so binary
+*.dll binary
+
+# Generated audio: keep it out of diffs, it is reproducible from tools/.
+assets/audio/*.wav linguist-generated=true

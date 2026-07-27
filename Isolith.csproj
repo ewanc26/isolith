@@ -1,0 +1,21 @@
+<Project Sdk="Godot.NET.Sdk/4.7.0">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Isolith</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+
+    <!-- Required by the LibraryImport source generator used in src/Sync/Interop. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <!-- Lets Godot load the assembly from .godot/mono/temp/bin at runtime. -->
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+
+    <Version>0.1.0</Version>
+    <Authors>Ewan Croft</Authors>
+    <Description>An isometric 3D platformer built with Godot and C#, with optional AT Protocol stat sync.</Description>
+    <RepositoryUrl>https://github.com/ewanc26/isolith</RepositoryUrl>
+  </PropertyGroup>
+
+</Project>
