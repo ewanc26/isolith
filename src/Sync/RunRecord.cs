@@ -35,6 +35,7 @@ public static class RunRecord
             ["completed"] = run.Completed,
             ["deaths"] = run.Deaths,
             ["jumps"] = run.Jumps,
+            ["sections"] = run.Sections,
             ["shards"] = new JsonObject
             {
                 ["collected"] = run.ShardsCollected,
@@ -99,6 +100,7 @@ public static class RunRecord
                 Completed = value["completed"]?.GetValue<bool>() ?? false,
                 Deaths = value["deaths"]?.GetValue<int>() ?? 0,
                 Jumps = value["jumps"]?.GetValue<int>() ?? 0,
+                Sections = value["sections"]?.GetValue<int>() ?? 0,
                 ShardsCollected = shards?["collected"]?.GetValue<int>() ?? 0,
                 ShardsTotal = shards?["total"]?.GetValue<int>() ?? 0,
                 StartedAt = ParseTimestamp(value["createdAt"]?.GetValue<string>()),

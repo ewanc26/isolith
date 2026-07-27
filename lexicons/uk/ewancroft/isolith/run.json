@@ -9,18 +9,24 @@
       "key": "tid",
       "record": {
         "type": "object",
-        "required": ["courseId", "courseHash", "timeMs", "completed", "createdAt"],
+        "required": [
+          "courseId",
+          "courseHash",
+          "timeMs",
+          "completed",
+          "createdAt"
+        ],
         "properties": {
           "courseId": {
             "type": "string",
             "maxLength": 64,
-            "description": "Identifier of the course, e.g. 'ascent'."
+            "description": "Identifier of the course, e.g. 'ascent'. The literal 'endless' marks a procedurally generated run, in which case courseHash is the generator seed."
           },
           "courseHash": {
             "type": "string",
-            "minLength": 64,
+            "minLength": 16,
             "maxLength": 64,
-            "description": "Lowercase hex SHA-256 of the course JSON. Times are only comparable within a single hash: editing a course changes it, so old runs stay attached to the layout they were set on."
+            "description": "For an authored course, the lowercase hex SHA-256 of the course JSON: times are only comparable within a single hash, so editing a course leaves old runs attached to the layout they were set on. For an endless run, the 16-character hex generator seed, which reproduces the run exactly."
           },
           "timeMs": {
             "type": "integer",
@@ -50,13 +56,21 @@
             "type": "string",
             "format": "datetime",
             "description": "When the run started."
+          },
+          "sections": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Sections cleared in an endless run. Absent or zero for an authored course."
           }
         }
       }
     },
     "shardCount": {
       "type": "object",
-      "required": ["collected", "total"],
+      "required": [
+        "collected",
+        "total"
+      ],
       "properties": {
         "collected": {
           "type": "integer",
