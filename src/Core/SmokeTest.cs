@@ -64,6 +64,11 @@ public partial class SmokeTest : Node
         foreach (string coursePath in CoursePaths())
             await CheckCourseAsync(game, coursePath);
 
+        GD.Print("\n-- procedural generation");
+        GenerationTests.Run(Check);
+
+        await CheckEndlessAsync(game);
+
         Finish();
     }
 
@@ -135,6 +140,40 @@ public partial class SmokeTest : Node
         Check($"  {label} is standable (rest y={restY:F2})", landed);
 
         player.InputLocked = false;
+    }
+
+    /// <summary>
+    /// Builds a live endless run and lets it settle, so generation is exercised
+    /// through the real scene rather than only as pure logic.
+    /// </summary>
+    private async System.Threading.Tasks.Task CheckEndlessAsync(GameManager game)
+    {
+        GD.Print("\n-- endless mode");
+
+        game.Mode = GameMode.Endless;
+        game.Seed = 20260727;
+        game.Restart();
+
+        await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+        Level.Generation.EndlessCourse? endless = game.Endless;
+
+        if (endless is null)
+        {
+            Fail("endless mode did not start");
+            return;
+        }
+
+        Check("endless run is reproducible from its seed", game.ActiveSeed == 20260727);
+        Check($"sections built ahead of the player ({CountNodes<Checkpoint>(endless)} checkpoints)",
+            CountNodes<Checkpoint>(endless) >= 3);
+        Check("the spawn pad exists", CountNodes<StaticBody3D>(endless) > 0);
+
+        // The player must be able to stand where an endless run drops them.
+        await CheckStandableAsync(game, "endless spawn", endless.RespawnPoint);
+
+        Check($"kill plane sits below the player ({endless.KillPlaneY:F1})",
+            endless.KillPlaneY < endless.RespawnPoint.Y);
     }
 
     private void ReportNativeLibrary()
