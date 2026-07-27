@@ -66,6 +66,12 @@ jobs:
         run: |
           "$GODOT" --headless --path . res://scenes/Smoke.tscn
 
+      - name: Verify vendored CC0 assets are present
+        # The packs are committed, so this needs no network. It catches an
+        # asset being deleted or a lock entry going missing.
+        run: |
+          python3 tools/fetch_assets.py --check
+
       - name: Verify generated assets are reproducible
         # The audio generator is deterministic. If regenerating changes a file,
         # either the generator drifted or a WAV was hand-edited.
