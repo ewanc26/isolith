@@ -68,4 +68,7 @@ or CC0/public-domain with its source recorded in the table above. Please do not
 add assets under a licence requiring attribution without also adding the
 attribution to this file.
 
+CC0 sources that would satisfy this, and what adopting one would actually cost,
+are surveyed in [`docs/ecosystem.md`](docs/ecosystem.md).
+
 [cc0]: https://creativecommons.org/publicdomain/zero/1.0/

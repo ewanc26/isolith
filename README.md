@@ -161,7 +161,8 @@ Python is repository tooling only — the game builds and runs without it, since
 generated assets are committed.
 
 `AGENTS.md` has the full architecture notes, the language policy, the invariants,
-and the conventions.
+and the conventions. [`docs/ecosystem.md`](docs/ecosystem.md) surveys Godot
+addons and CC0 asset sources against those constraints.
 
 ## Licence
 

@@ -79,6 +79,11 @@ iterate on and matters not at all for code that ships.
 **There is currently no GDScript in this repository.** That is the default
 state, not an accident. Adding some requires a reason that fits the box above.
 
+This rules out most Godot addons, which are GDScript running at game time.
+GDExtension addons (native, with C# bindings) and NuGet packages are fine.
+[`docs/ecosystem.md`](docs/ecosystem.md) works through the specific ones worth
+considering.
+
 ### Python is tooling, never runtime
 
 `tools/generate_assets.py` is a development script. It uses the standard library
@@ -125,6 +130,7 @@ compile C# itself.
 .github/workflows/ci.yml   Build + smoke test + asset reproducibility
 addons/                    Editor-only plugins (GDScript lives here, if ever)
 assets/audio/              Generated WAVs (committed, reproducible)
+docs/                      Ecosystem survey (addons, CC0 asset sources)
 courses/                   Level data
 lexicons/                  AT Protocol record schemas
 native/                    libwolfram goes here (gitignored, not vendored)
@@ -571,6 +577,11 @@ Follow §8's four steps. Keep it out of `Gameplay`.
 - **UI built in C# instead of `.tscn`.** See §5.
 - **`native/*.dylib` gitignored.** The SDK is built from its own repo, not
   vendored.
+- **"resources still in use at exit" after the smoke test.** Godot's audio
+  server holds the two clips that actually played, plus their playback objects,
+  past `_ExitTree`. `Sfx._ExitTree` already stops every voice, clears its
+  streams and disposes them; the references that remain are engine-side
+  teardown ordering, not ours. Exit code is still 0. Don't chase it.
 - **`_ = RunAsync()` in `SmokeTest._Ready()`.** Godot cannot `await` in
   `_Ready`; the coroutine is intentionally fire-and-forget and ends by calling
   `GetTree().Quit()`.
