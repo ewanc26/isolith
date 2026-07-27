@@ -71,6 +71,16 @@ public partial class PlayerController : CharacterBody3D
     /// <summary>True while the player is frozen (course complete, paused, respawning).</summary>
     public bool InputLocked { get; set; }
 
+    /// <summary>
+    /// The body the player is currently standing on, or was last standing on.
+    /// </summary>
+    /// <remarks>
+    /// Used by endless generation to attribute a death to the thing that caused
+    /// it — falling off a moving platform and mistiming a plain jump are
+    /// different failures and the director responds to them differently.
+    /// </remarks>
+    public Node3D? LastFloor { get; private set; }
+
     private float _coyoteTimer;
     private float _jumpBufferTimer;
     private bool _wasOnFloor;
@@ -110,6 +120,7 @@ public partial class PlayerController : CharacterBody3D
         Vector3 before = Velocity;
         MoveAndSlide();
 
+        TrackFloor();
         HandleLanding(before);
         HandleBouncePads();
         UpdateFacing(dt);
@@ -206,6 +217,22 @@ public partial class PlayerController : CharacterBody3D
     // -----------------------------------------------------------------------
     // Reactions
     // -----------------------------------------------------------------------
+
+    /// <summary>Remembers the current floor, keeping the last one while airborne.</summary>
+    private void TrackFloor()
+    {
+        if (!IsOnFloor())
+            return;
+
+        for (int i = 0; i < GetSlideCollisionCount(); i++)
+        {
+            if (GetSlideCollision(i).GetCollider() is Node3D body)
+            {
+                LastFloor = body;
+                return;
+            }
+        }
+    }
 
     private void HandleLanding(Vector3 velocityBeforeSlide)
     {

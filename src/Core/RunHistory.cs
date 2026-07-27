@@ -67,6 +67,31 @@ public static class RunHistory
             .FirstOrDefault();
     }
 
+    /// <summary>
+    /// The furthest an endless run has ever got.
+    /// </summary>
+    /// <remarks>
+    /// Endless runs are not compared within a seed the way authored courses are
+    /// compared within a layout hash: every run has its own seed, and the point
+    /// of the mode is how far you got, not which arrangement you got it on.
+    /// They also never set <c>Completed</c> — there is no goal to reach.
+    /// </remarks>
+    public static RunStats? FurthestEndless()
+    {
+        RunStats? best = null;
+
+        foreach (RunStats run in LoadAll())
+        {
+            if (run.CourseId != "endless")
+                continue;
+
+            if (best is null || run.Sections > best.Sections)
+                best = run;
+        }
+
+        return best;
+    }
+
     private static void Save(List<RunStats> runs)
     {
         using FileAccess file = FileAccess.Open(SavePath, FileAccess.ModeFlags.Write);

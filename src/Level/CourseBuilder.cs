@@ -28,10 +28,14 @@ public static class CourseBuilder
         Vector3 Spawn,
         List<Shard> Shards,
         List<Checkpoint> Checkpoints,
-        Goal Goal);
+        Goal? Goal);
 
     /// <summary>Builds <paramref name="course"/> as a child of <paramref name="parent"/>.</summary>
-    public static Built Build(Course course, Node parent)
+    /// <param name="includeGoal">
+    /// False for a procedurally generated section, which is one link in an
+    /// endless chain and therefore has nothing to finish.
+    /// </param>
+    public static Built Build(Course course, Node parent, bool includeGoal = true)
     {
         var root = new Node3D { Name = $"Course_{course.Id}" };
         parent.AddChild(root);
@@ -50,7 +54,7 @@ public static class CourseBuilder
         foreach (float[] position in course.Checkpoints)
             checkpoints.Add(AddCheckpoint(root, Course.ToVector(position)));
 
-        Goal goal = AddGoal(root, Course.ToVector(course.Goal));
+        Goal? goal = includeGoal ? AddGoal(root, Course.ToVector(course.Goal)) : null;
 
         return new Built(root, Course.ToVector(course.Spawn), shards, checkpoints, goal);
     }

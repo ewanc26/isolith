@@ -20,10 +20,13 @@ public sealed class RunStats
 
     [JsonPropertyName("timeMs")] public int TimeMs { get; set; }
     [JsonPropertyName("shardsCollected")] public int ShardsCollected { get; set; }
-    [JsonPropertyName("shardsTotal")] public int ShardsTotal { get; init; }
+    [JsonPropertyName("shardsTotal")] public int ShardsTotal { get; set; }
     [JsonPropertyName("deaths")] public int Deaths { get; set; }
     [JsonPropertyName("jumps")] public int Jumps { get; set; }
     [JsonPropertyName("completed")] public bool Completed { get; set; }
+
+    /// <summary>Sections cleared. Only meaningful for an endless run.</summary>
+    [JsonPropertyName("sections")] public int Sections { get; set; }
 
     [JsonPropertyName("startedAt")] public DateTimeOffset StartedAt { get; init; } = DateTimeOffset.UtcNow;
 
@@ -50,6 +53,11 @@ public sealed class RunStats
         int completed = b.Completed.CompareTo(a.Completed);
         if (completed != 0)
             return completed;
+
+        // An endless run is ranked by how far it got, not how quickly.
+        int sections = b.Sections.CompareTo(a.Sections);
+        if (sections != 0)
+            return sections;
 
         int shards = b.ShardsCollected.CompareTo(a.ShardsCollected);
         if (shards != 0)
