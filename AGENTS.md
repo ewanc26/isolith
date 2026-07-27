@@ -1,0 +1,523 @@
+# AGENTS.md
+
+Working notes for anyone — human or agent — making changes to Isolith. It
+records the architecture, the invariants that are easy to break, and the
+reasoning behind decisions that look arbitrary from the outside.
+
+Read [`README.md`](README.md) first for what the game is. This file is about how
+it is built.
+
+---
+
+## 1. What this project is
+
+**Isolith is an isometric 3D platformer.** Godot 4.7, C#, .NET 10.
+
+It is a game first. It runs offline, needs no account, and stores its full run
+history locally. An optional module can additionally copy run stats into the
+player's own AT Protocol repo.
+
+### Scope
+
+| In scope | Out of scope |
+| --- | --- |
+| Single-player platforming | Multiplayer, netcode |
+| Data-driven courses (JSON) | An in-engine level editor |
+| Local run history | A server, an account system |
+| Optional per-user repo sync | Cross-user leaderboards (needs an AppView) |
+| Code-generated assets | Imported art, audio, or fonts |
+
+### The one rule that shapes everything
+
+**Sync is never load-bearing.** If `libwolfram` is missing, the network is down,
+the player never signs in, or a record write fails, the game must play exactly
+the same. Every code path in `src/Sync/` is allowed to fail; no code path in
+`src/Gameplay/` may depend on one succeeding.
+
+If you find yourself writing `if (syncFailed) { …gameplay change… }`, stop.
+
+---
+
+## 2. Orientation
+
+```bash
+dotnet build                                              # compile
+godot --path .                                            # play
+godot --headless --path . res://scenes/Smoke.tscn         # test
+python3 tools/generate_assets.py                          # regenerate audio
+```
+
+On macOS the Godot binary is inside the app bundle:
+
+```bash
+/Applications/Godot_mono.app/Contents/MacOS/Godot --path .
+```
+
+The project must be built with `dotnet build` **before** Godot can run it —
+Godot loads the compiled assembly from `.godot/mono/temp/bin/`, it does not
+compile C# itself.
+
+---
+
+## 3. Layout
+
+```
+.github/workflows/ci.yml   Build + smoke test + asset reproducibility
+assets/audio/              Generated WAVs (committed, reproducible)
+courses/                   Level data
+lexicons/                  AT Protocol record schemas
+native/                    libwolfram goes here (gitignored, not vendored)
+scenes/                    Main.tscn, Player.tscn, Smoke.tscn
+src/Core/                  Input, stats, history, audio, smoke test
+src/Gameplay/              Player, camera, course objects, game manager
+src/Level/                 Course format, builder, palette
+src/Sync/                  Optional AT Protocol sync
+src/UI/                    HUD and sync panel
+tools/                     Asset generator
+```
+
+### Dependency direction
+
+```
+        UI ──────────────┐
+         │               │
+         ▼               ▼
+     Gameplay ────────► Core ◄──── Sync
+         │
+         ▼
+       Level
+```
+
+- `Core` depends on nothing but Godot. It is the shared vocabulary
+  (`RunStats`, `GameInput`, `RunHistory`, `Sfx`).
+- `Level` is pure content: parsing course JSON and turning it into nodes.
+- `Gameplay` owns the session. It knows about `Level` and `Core`.
+- `Sync` knows about `Core` only. **It must never reference `Gameplay`.**
+- `UI` is the only layer allowed to wire `Gameplay` and `Sync` together, and it
+  does so through events in one direction: gameplay raises, sync reacts.
+
+`SmokeTest` lives in `Core` but reaches into `Gameplay` — that is a deliberate
+exception for a test harness, not a licence to add more.
+
+---
+
+## 4. Module notes
+
+### `src/Core/GameInput.cs`
+
+Action names and default bindings.
+
+Bindings are registered **in code**, not in `project.godot`. Godot serialises an
+input map as a dense `Object(InputEventKey, …)` blob that is unreviewable in a
+diff and shifts between engine versions. `Configure()` skips any action that
+already exists, so an `[input]` section in `project.godot` or a player's own
+remapping still wins.
+
+**Gamepad is primary.** Each action lists its controller binding first and its
+keyboard binding second. Movement uses `Input.GetVector`, which preserves stick
+magnitude — analog input controls speed, keys are all-or-nothing.
+
+`Observe()` tracks which device was last used so the HUD can name the right
+button. It ignores joystick motion below 0.35 so stick drift doesn't keep
+claiming the pad is in use.
+
+Keys bind by **physical** position (`PhysicalKeycode`), so WASD stays under the
+same fingers on AZERTY.
+
+### `src/Core/RunStats.cs` / `RunHistory.cs`
+
+`RunStats` is one attempt. `RunHistory` persists a capped list to
+`user://runs.json`.
+
+This is the authoritative store. `GameManager.OnGoalReached` writes it
+*unconditionally, before* raising `RunCompleted`. Sync is a listener on that
+event, never a gatekeeper of it.
+
+A corrupt history file logs a warning and reads as empty. It must never throw
+into gameplay.
+
+### `src/Core/Sfx.cs`
+
+Round-robin pool of eight `AudioStreamPlayer` voices. Clips load from
+`res://assets/audio/`; **missing clips are silently skipped**, so a fresh clone
+that hasn't run the generator still plays.
+
+`ProcessMode = Always` so menu sounds work while the tree is paused.
+
+### `src/Level/Course.cs`
+
+The course data model plus `Load`/`Parse`.
+
+Loading goes through Godot's `FileAccess`, not `System.IO`, because in an
+exported build `res://` lives inside the `.pck` and is not a real file.
+
+`Course.Hash` is the SHA-256 of the **exact source JSON**, kept in
+`SourceJson`. It is what makes times comparable: edit a course and every prior
+run stays attached to the layout it was set on. Do not compute the hash from
+re-serialised data — whitespace changes would silently invalidate history.
+
+### `src/Level/CourseBuilder.cs`
+
+Turns a `Course` into nodes. The one place that decides what a block *is*.
+
+Physics layers (1-based, matching the editor and `project.godot`):
+
+| Layer | Name | Contents |
+| --- | --- | --- |
+| 1 | World | Solid geometry, moving and crumbling platforms |
+| 2 | Player | The character body |
+| 3 | Trigger | Shards, checkpoints, goal, hazards, crumble triggers |
+
+`Mask(n)` converts a layer *number* into a bitmask. Passing a mask where a
+number is expected is the classic bug here.
+
+**Hazards are `Area3D`, not `StaticBody3D`.** The player should fall *into*
+spikes, not stand on them.
+
+**Bounce pads are flagged with metadata**, not a type. `CourseBuilder` sets
+`BounceMeta` on the body and `PlayerController` reads it off whatever it lands
+on. This keeps the controller ignorant of level semantics — adding a new
+surface behaviour shouldn't mean editing the character controller.
+
+### `src/Level/Palette.cs`
+
+Every colour and material in the game, built in code and cached. There are no
+material resources on disk. If you are about to hardcode a `Color` anywhere
+else, put it here instead.
+
+### `src/Gameplay/PlayerController.cs`
+
+The most tuning-sensitive file. See §5 for the numbers.
+
+Input is interpreted in the **camera's** frame, not the world's, via
+`Camera.Yaw`. Without that, a 45°-rotated view makes every direction diagonal.
+
+`FloorSnapLength = 0.4` keeps the character stuck to downward slopes and to
+moving platforms instead of stepping off into a one-frame fall.
+
+The small `-2.0` downward velocity applied while grounded is deliberate: it
+keeps `IsOnFloor()` stable frame to frame. Removing it causes intermittent
+false airborne states and breaks coyote timing.
+
+### `src/Gameplay/IsometricCamera.cs`
+
+Orthographic, pitched to `-atan(1/√2) ≈ -35.264°`. At that angle a unit cube
+projects to a regular hexagon with three equally foreshortened faces — that is
+what makes it *isometric* rather than merely angled. Changing the pitch breaks
+the projection; change `ViewSize` if you want a different framing.
+
+`Yaw` returns the **destination** yaw, not the animating one. Snapping the
+control frame the moment a rotation starts keeps a held direction meaningful
+throughout the turn; interpolating it would curve the player's path mid-rotation.
+
+Follow smoothing uses `1 - exp(-sharpness * dt)`, which is frame-rate
+independent. A plain `Lerp(a, b, 0.1f)` is not, and will feel different at 144 Hz.
+
+### `src/Gameplay/GameManager.cs`
+
+Owns the session: load, build, time, die, restart, complete.
+
+**Required children** of the node this script is attached to:
+
+| Name | Type |
+| --- | --- |
+| `Player` | `PlayerController` |
+| `IsoCamera` | `IsometricCamera` |
+| `CourseRoot` | `Node3D` |
+
+`RequireChild<T>` throws a descriptive error if one is missing. `Hud` and
+`SyncPanel` also expect to be children, and `SyncPanel` looks up its sibling by
+the name `Hud`.
+
+`Restart()` rebuilds the course from scratch rather than resetting objects
+individually. Cheap at this scale, and it makes "did I reset everything?" a
+non-question.
+
+`SetUiFocus(bool)` suppresses gameplay input while a panel holds the keyboard,
+so typing a handle into a text field doesn't also make the character jump.
+
+### `src/Sync/`
+
+See §7. Structure:
+
+| File | Tier |
+| --- | --- |
+| `Interop/WolframLibrary.cs` | Locates and loads the native library |
+| `Interop/WolframNative.cs` | Raw `LibraryImport` declarations, 1:1 with the C ABI |
+| `Interop/WolframAgentHandle.cs` | `SafeHandle` owning `wf_agent *` |
+| `WolframAgent.cs` | Managed, blocking API |
+| `WolframStatus.cs`, `WolframException.cs` | Status mirror and errors |
+| `RunRecord.cs` | `RunStats` ⇄ lexicon JSON |
+| `SyncService.cs` | Async Godot node, the only thing UI touches |
+
+### `src/UI/`
+
+Built entirely in code. The UI is text on flat panels; describing it in C# keeps
+it reviewable in a diff and avoids shipping a binary theme resource. If the UI
+grows past a few panels, revisit this — it is a pragmatic choice, not dogma.
+
+---
+
+## 5. The physics envelope
+
+These derive from `PlayerController`'s exported defaults. **If you change the
+tuning, recompute these and update `README.md`, because course design depends
+on them.**
+
+| Constant | Value |
+| --- | --- |
+| `MoveSpeed` | 7.0 m/s |
+| `JumpHeight` | 2.45 m |
+| `RiseGravity` | 22.0 m/s² |
+| `FallGravity` | 36.0 m/s² |
+| `BounceHeight` | 5.5 m |
+| `CoyoteTime` | 0.12 s |
+| `JumpBufferTime` | 0.14 s |
+
+Jump velocity is `√(2 · RiseGravity · JumpHeight)`:
+
+```
+v      = √(2 × 22 × 2.45)   = 10.38 m/s
+t_up   = 10.38 / 22          = 0.472 s
+t_down = √(2 × 2.45 / 36)    = 0.369 s
+airtime                      = 0.841 s
+range  = 7.0 × 0.841         ≈ 5.9 m
+```
+
+Bounce pad:
+
+```
+v      = √(2 × 22 × 5.5)     = 15.56 m/s
+apex                          = 5.5 m
+airtime                       ≈ 1.26 s
+range                         ≈ 8.8 m
+```
+
+**Design rule:** keep gaps under ~5 m horizontal and ~2.2 m vertical for a
+normal jump. Rise gravity is deliberately lower than fall gravity — a floaty
+rise and a fast drop is what makes a platformer feel responsive rather than
+sluggish.
+
+---
+
+## 6. Course format
+
+A course is a JSON object in `courses/`. All positions are **centres**; all
+sizes are **full extents**. A block's walkable surface is at
+`pos.y + size.y / 2`.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `id` | string | Stable identifier; goes into run records |
+| `name` | string | Display name |
+| `author` | string | Optional |
+| `spawn` | `[x, y, z]` | Player start |
+| `killPlaneY` | number | Falling below this is a death |
+| `blocks` | array | Static geometry — see below |
+| `movers` | array | Moving platforms |
+| `shards` | `[[x, y, z], …]` | Collectibles |
+| `checkpoints` | `[[x, y, z], …]` | Respawn markers |
+| `goal` | `[x, y, z]` | Finish pad |
+
+**Block:** `{ "pos": [x,y,z], "size": [w,h,d], "kind": "…" }`
+
+| `kind` | Behaviour |
+| --- | --- |
+| `Solid` | Plain collision |
+| `Grass` | Cosmetic variant of `Solid` |
+| `Hazard` | `Area3D`; entering kills |
+| `Bounce` | Launches the player on landing |
+| `Crumble` | Shakes, drops, and restores after ~3.9 s |
+
+**Mover:** `{ "from": […], "to": […], "size": […], "period": s, "phase": 0–1 }`
+— a full there-and-back cycle takes `period`, eased at both ends. `phase`
+staggers several movers.
+
+Adding a course means dropping the file in `courses/`. The smoke test discovers
+`courses/*.json` automatically and will check it.
+
+---
+
+## 7. Interop rules (`src/Sync/Interop/`)
+
+This is the only unsafe part of the codebase. Get it wrong and you get memory
+corruption, not an exception.
+
+### Ownership
+
+Strings the C SDK returns fall into two classes and **must not** be treated
+alike:
+
+| Class | Examples | Handling |
+| --- | --- | --- |
+| **Borrowed** | `wf_agent_get_did`, `wf_agent_get_handle` | Owned by the agent. Declare the return as `IntPtr` and copy with `Marshal.PtrToStringUTF8`. **Never free.** |
+| **Owned** | `wf_agent_post_result.uri`/`.cid`, `wf_response.body` | Release with the SDK's own `*_free` in a `finally`. Never let the marshaller free them. |
+
+Do not use `[return: MarshalAs(UnmanagedType.LPUTF8Str)]` on a function
+returning a borrowed pointer. The marshaller's free behaviour is
+platform-dependent and will eventually free memory the SDK still owns.
+
+### Struct layout
+
+`WolframNative.Response` mirrors C `wf_response`. Its `status` field is a C
+`long`, which is **8 bytes on Unix and 4 on Windows** — hence `CLong`, not
+`long`. Using `long` silently misaligns every field after it on Windows.
+
+`wf_response.body` is length-delimited by `body_len` and is not guaranteed to be
+NUL-terminated; always read it with the two-argument
+`Marshal.PtrToStringUTF8(ptr, len)`.
+
+### Handles
+
+`wf_agent *` is owned by `WolframAgentHandle : SafeHandle`. No raw `IntPtr`
+escapes that layer. Native calls go through `WolframAgent.HandleScope`, which
+`DangerousAddRef`s for the duration so the agent cannot be finalised mid-request.
+
+### Adding an SDK call
+
+1. Find the declaration in `wolfram/include/wolfram/*.h`.
+2. Add a `[LibraryImport]` to `WolframNative` mirroring it exactly —
+   `nuint` for `size_t`, `CLong` for `long`, `IntPtr` for opaque handles.
+3. Add a managed method to `WolframAgent` that takes the lock, opens a
+   `HandleScope`, calls it, checks the status with
+   `WolframException.ThrowIfFailed`, and frees any owned output in a `finally`.
+4. Expose it from `SyncService` via `Run(…)` so it lands on the thread pool.
+
+Never add protocol logic to the wrapper. If something needs computing, it
+belongs in the C SDK.
+
+---
+
+## 8. Threading
+
+Godot's scene tree is **main-thread only**.
+
+Every `libwolfram` call blocks on network I/O, so `SyncService.Run()` dispatches
+to the thread pool and marshals results back with
+`Callable.From(() => …).CallDeferred()`. Values are captured in the closure
+rather than stashed in fields, which removes a whole class of race.
+
+Rules:
+
+- No `SyncService` event fires off the main thread.
+- No node is touched, created, or freed off the main thread.
+- `WolframAgent` serialises its own native calls with a lock; `SyncService`'s
+  `SemaphoreSlim` only stops two operations racing to replace the agent.
+- A failure after a successful sign-in returns to `SignedIn`, not `Failed` —
+  one bad request should not log the player out.
+
+---
+
+## 9. Assets
+
+**No third-party art, audio, fonts, or models. Ever.** See
+[`ASSETS.md`](ASSETS.md) for the full record.
+
+- Sound effects: synthesised by `tools/generate_assets.py`, standard library
+  only, deterministic per clip. CI regenerates and fails on any diff.
+- Geometry: Godot primitives built in `CourseBuilder`.
+- Materials: `Palette.cs`.
+- Fonts: none — the engine default is used.
+
+Anything new must be script-generated, hand-authored as source text, or
+CC0/public-domain with its provenance added to `ASSETS.md`.
+
+---
+
+## 10. Testing
+
+`scenes/Smoke.tscn` → `src/Core/SmokeTest.cs`. Headless, so it runs in CI.
+
+It loads the real `Main.tscn`, then for each course checks that it parses and
+builds, that the built node counts match the data, and — the valuable part —
+that the spawn, every checkpoint, and the goal are **standable**: the player is
+dropped at each and must come to rest on the floor. A course whose goal hangs
+over a void is valid JSON but not a finishable level, and only this catches it.
+
+Exit code is non-zero on failure.
+
+When adding a mechanic, prefer extending the smoke test over adding a new
+harness. It is cheap and it already has a real scene running.
+
+---
+
+## 11. Conventions
+
+- **C# 12+, nullable enabled, `AllowUnsafeBlocks`** (required by
+  `LibraryImport`'s source generator).
+- Godot node classes are `[GlobalClass] public partial class`. Godot's source
+  generator requires `partial`.
+- One public type per file, named after the file.
+- XML docs on public types and non-obvious members. Comment **why**, not what —
+  the code already says what.
+- Prefer C# `event` over Godot signals for code-instantiated nodes: type-safe,
+  no string names, no marshalling.
+- Unsubscribe in `_ExitTree()` for anything subscribed in `_Ready()`.
+- Use `SetDeferred` for collision-state changes; they cannot be applied during
+  physics flushing.
+
+### Commits
+
+Conventional commits, scoped by area:
+
+```
+feat(gameplay): add wall-slide to the player controller
+fix(level): correct crumble platform restore position
+docs(sync): explain app password handling
+```
+
+Scopes in use: `build`, `core`, `level`, `gameplay`, `ui`, `sync`, `content`,
+`assets`, `test`, `ci`, `docs`.
+
+Commit by scope — one logical change per commit, not one commit per session.
+
+---
+
+## 12. Common tasks
+
+**Add a block kind**
+1. Add to `BlockKind` in `Course.cs`.
+2. Give it a material in `Palette.ForBlock`.
+3. Handle it in `CourseBuilder.AddBlock`.
+4. If it needs behaviour on contact, prefer metadata + a check in the relevant
+   system over new logic in `PlayerController`.
+5. Document it in §6 and in `README.md`.
+
+**Add a course**
+Drop the JSON in `courses/`, then run the smoke test. It is discovered
+automatically.
+
+**Retune the player**
+Change the exported defaults, then recompute §5 and update `README.md`. Existing
+course times are not invalidated by tuning changes — only course *edits* change
+the hash — so consider whether a tuning change should be paired with a course
+version bump.
+
+**Add a sync operation**
+Follow §7's four steps. Keep it out of `Gameplay`.
+
+---
+
+## 13. Things that look wrong but are not
+
+- **`GameInput` registering bindings in code.** Deliberate; see §4.
+- **The `-2.0` grounded velocity in `PlayerController`.** Keeps `IsOnFloor()`
+  stable. Removing it breaks coyote time.
+- **`IsometricCamera.Yaw` returning the target, not the current, yaw.** Keeps
+  held input meaningful during a rotation.
+- **`Course` fully qualified as `Level.Course.Load(…)` in `GameManager`.** The
+  property and the type share a name; the qualification is for the reader.
+- **UI built in C# instead of `.tscn`.** See §4.
+- **`native/*.dylib` gitignored.** The SDK is built from its own repo, not
+  vendored.
+- **`_ = RunAsync()` in `SmokeTest._Ready()`.** Godot cannot `await` in
+  `_Ready`; the coroutine is intentionally fire-and-forget and ends by calling
+  `GetTree().Quit()`.
+
+---
+
+## 14. Related
+
+- [wolfram](https://github.com/ewanc26/wolfram) — the C11 AT Protocol SDK this
+  syncs through.
+- [`lexicons/uk/ewancroft/isolith/run.json`](lexicons/uk/ewancroft/isolith/run.json) — the run record schema.
