@@ -3,6 +3,7 @@ using Godot;
 using Isolith.Core;
 using Isolith.Gameplay;
 using Isolith.Level;
+using Isolith.Level.Generation;
 
 namespace Isolith.UI;
 
@@ -25,6 +26,9 @@ public partial class Hud : CanvasLayer
     private Label _deaths = null!;
     private Label _best = null!;
     private Label _syncLine = null!;
+    private Label _sections = null!;
+    private Label _director = null!;
+    private float _directorFade;
 
     private PanelContainer _completePanel = null!;
     private Label _completeTitle = null!;
@@ -54,6 +58,7 @@ public partial class Hud : CanvasLayer
         _game.StatsChanged += OnStatsChanged;
         _game.StateChanged += OnStateChanged;
         _game.RunCompleted += OnRunCompleted;
+        _game.SectionCompleted += OnSectionCompleted;
     }
 
     public override void _ExitTree()
@@ -61,6 +66,28 @@ public partial class Hud : CanvasLayer
         _game.StatsChanged -= OnStatsChanged;
         _game.StateChanged -= OnStateChanged;
         _game.RunCompleted -= OnRunCompleted;
+        _game.SectionCompleted -= OnSectionCompleted;
+    }
+
+    public override void _Process(double delta)
+    {
+        if (_directorFade <= 0f)
+            return;
+
+        // The director's reasoning is shown briefly, then fades. It is
+        // feedback, not a permanent readout — seeing "easing, 2 deaths" once
+        // explains why the next stretch is kinder.
+        _directorFade -= (float)delta;
+        _director.Modulate = new Color(1, 1, 1, Mathf.Clamp(_directorFade, 0f, 1f) * 0.75f);
+    }
+
+    private void OnSectionCompleted(SectionPerformance performance, SectionSpec next)
+    {
+        if (_game.Endless is not { } endless)
+            return;
+
+        _director.Text = $"{endless.Director.LastReason}   ·   difficulty {next.Difficulty:F2}";
+        _directorFade = 4.0f;
     }
 
     public override void _Input(InputEvent @event)
@@ -132,11 +159,13 @@ public partial class Hud : CanvasLayer
         margin.AddChild(column);
 
         _time = Heading("0:00.000");
+        _sections = Readout("");
         _shards = Readout("Shards 0 / 0");
         _deaths = Readout("Deaths 0");
         _best = Readout("");
 
         column.AddChild(_time);
+        column.AddChild(_sections);
         column.AddChild(_shards);
         column.AddChild(_deaths);
         column.AddChild(_best);
@@ -200,10 +229,14 @@ public partial class Hud : CanvasLayer
         _controls = Readout("");
         _controls.Modulate = new Color(1, 1, 1, 0.45f);
 
+        _director = Readout("");
+        _director.Modulate = new Color(1, 1, 1, 0f);
+
         _syncLine = Readout("");
         _syncLine.Modulate = new Color(1, 1, 1, 0.45f);
 
         row.AddChild(_controls);
+        row.AddChild(_director);
         row.AddChild(_syncLine);
     }
 
@@ -216,6 +249,8 @@ public partial class Hud : CanvasLayer
         _time.Text = stats.TimeText;
         _shards.Text = $"Shards {stats.ShardsCollected} / {stats.ShardsTotal}";
         _deaths.Text = $"Deaths {stats.Deaths}";
+
+        _sections.Text = _game.Mode == GameMode.Endless ? $"Section {stats.Sections + 1}" : "";
     }
 
     private void OnStateChanged(GameState state)
@@ -241,6 +276,17 @@ public partial class Hud : CanvasLayer
 
     private void ShowPersonalBest()
     {
+        if (_game.Mode == GameMode.Endless)
+        {
+            // Endless runs are compared by distance, across every seed.
+            RunStats? furthest = RunHistory.FurthestEndless();
+            _best.Text = furthest is null || furthest.Sections == 0
+                ? ""
+                : $"Best {furthest.Sections} sections";
+            _best.Modulate = new Color(1, 1, 1, 0.5f);
+            return;
+        }
+
         Course? course = _game.Course;
         if (course is null)
         {
