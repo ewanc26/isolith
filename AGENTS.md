@@ -138,6 +138,7 @@ scenes/                    Main.tscn, Player.tscn, Smoke.tscn
 src/Core/                  Input, stats, history, audio, smoke test
 src/Gameplay/              Player, camera, course objects, game manager
 src/Level/                 Course format, builder, palette
+src/Level/Generation/      Endless mode: director, generator, envelope
 src/Sync/                  Optional AT Protocol sync
 src/UI/                    HUD and sync panel
 tools/                     Asset generator
@@ -163,8 +164,8 @@ tools/                     Asset generator
 - `UI` is the only layer allowed to wire `Gameplay` and `Sync` together, and it
   does so through events in one direction: gameplay raises, sync reacts.
 
-`SmokeTest` lives in `Core` but reaches into `Gameplay` — that is a deliberate
-exception for a test harness, not a licence to add more.
+`SmokeTest` and `GenerationTests` live in `Core` but reach into `Gameplay` and
+`Level` — a deliberate exception for test harnesses, not a licence to add more.
 
 ---
 
@@ -305,7 +306,7 @@ so typing a handle into a text field doesn't also make the character jump.
 
 ### `src/Sync/`
 
-See §8. Structure:
+See §9. Structure:
 
 | File | Tier |
 | --- | --- |
@@ -405,7 +406,88 @@ Adding a course means dropping the file in `courses/`. The smoke test discovers
 
 ---
 
-## 8. Interop rules (`src/Sync/Interop/`)
+## 8. Procedural generation
+
+Endless mode. Sections are generated ahead of the player, and each one is shaped
+by how the previous one actually went.
+
+### The pieces
+
+| Type | Responsibility |
+| --- | --- |
+| `JumpEnvelope` | What the player can physically reach, derived from `PlayerController`'s exports |
+| `SectionPerformance` | What the player did in one section |
+| `SectionSpec` | The recipe for the next section |
+| `AdaptiveDirector` | Reads a performance, produces the next spec |
+| `SectionGenerator` | Turns a spec into geometry. Pure and deterministic |
+| `EndlessCourse` | Streams sections, measures play, frees what is behind |
+
+The split matters: the director is pure logic over plain data, so its behaviour
+is tested without building a single node.
+
+### The invariant
+
+**Every generated jump is within reach.** The clamp is against `JumpEnvelope`,
+which is computed from the controller's real tuning — not a literal someone
+typed. Retune the character and generation retunes with it; there is no second
+set of numbers to forget.
+
+`GenerationTests.TraversabilityHolds` asserts this over 3200 jumps spanning the
+full difficulty range, using *adversarial* specs whose gap and rise parameters
+are deliberately set far beyond the envelope. If the generator's clamping
+regresses, that test fails rather than a player finding an uncrossable gap three
+minutes into a run they cannot reproduce.
+
+It also checks the opposite failure: generation must actually *reach* the budget
+at high difficulty. A generator that clamps everything to something trivial is
+safe and pointless.
+
+### What the director reacts to
+
+| Signal from the previous section | Response |
+| --- | --- |
+| Deaths | Difficulty falls, sharply |
+| Died on a moving platform | Mover trust cut to 40%; crumble and bounce untouched |
+| Died on a crumbling platform | Crumble trust cut to 45% |
+| Walked past bounce pads without using them | Bounce trust falls — they have not understood the mechanic |
+| Cleared it with no deaths and good pace | Difficulty rises, slowly |
+| Landing repeatedly near platform edges | Difficulty **holds**, even with no deaths |
+| Standing still before jumps (hesitation) | Gap *spread* narrows — consistent distances are learnable, varied ones are guesswork |
+| Collected every shard comfortably | Shards move onto riskier detours |
+| Missed most shards | Shards move back onto the main path |
+
+### Two decisions worth not undoing
+
+**Falls fast, rises slow.** Difficulty may drop 0.20 in a section but rise only
+0.06. A player who just died wants relief now; a player who cleared one section
+has not yet proven they want it harder. Symmetric rates oscillate — punishing,
+then trivial, then punishing again — and the oscillation feels worse than either
+extreme.
+
+**Trust is per-mechanic, not one dial.** "Keeps falling off moving platforms" and
+"finds the game too easy" are different problems, and a single difficulty number
+answers both the same way, which is wrong for at least one of them. Mover,
+crumble, and bounce trust move independently, so the game can stay hard in
+general while going easy on the one thing this player keeps dying to. Trust also
+recovers slowly on its own, so one bad section does not remove a mechanic from
+the run permanently.
+
+### Section boundaries
+
+A section is finished when the player triggers the **next** section's
+checkpoint. The reaction is therefore to a section actually completed, not to a
+guess about where the player is — and the checkpoint already exists for respawn.
+
+### Reproducibility
+
+Generated content goes through the same JSON parse as authored courses, so it is
+validated, hashable, and dumpable. `GameManager.Seed` reproduces a run exactly:
+set it to a non-zero value and the same sections appear in the same order. That
+is what makes a generated level reportable as a bug.
+
+---
+
+## 9. Interop rules (`src/Sync/Interop/`)
 
 This is the only unsafe part of the codebase. Get it wrong and you get memory
 corruption, not an exception.
@@ -455,7 +537,7 @@ belongs in the C SDK.
 
 ---
 
-## 9. Threading
+## 10. Threading
 
 Godot's scene tree is **main-thread only**.
 
@@ -475,7 +557,7 @@ Rules:
 
 ---
 
-## 10. Assets
+## 11. Assets
 
 **No third-party art, audio, fonts, or models. Ever.** See
 [`ASSETS.md`](ASSETS.md) for the full record.
@@ -491,7 +573,7 @@ CC0/public-domain with its provenance added to `ASSETS.md`.
 
 ---
 
-## 11. Testing
+## 12. Testing
 
 `scenes/Smoke.tscn` → `src/Core/SmokeTest.cs`. Headless, so it runs in CI.
 
@@ -508,7 +590,7 @@ harness. It is cheap and it already has a real scene running.
 
 ---
 
-## 12. Conventions
+## 13. Conventions
 
 - **C# for all runtime code** — see §2. C# 12+, nullable enabled, and
   `AllowUnsafeBlocks` (required by `LibraryImport`'s source generator).
@@ -540,7 +622,7 @@ Commit by scope — one logical change per commit, not one commit per session.
 
 ---
 
-## 13. Common tasks
+## 14. Common tasks
 
 **Add a block kind**
 1. Add to `BlockKind` in `Course.cs`.
@@ -561,11 +643,11 @@ the hash — so consider whether a tuning change should be paired with a course
 version bump.
 
 **Add a sync operation**
-Follow §8's four steps. Keep it out of `Gameplay`.
+Follow §9's four steps. Keep it out of `Gameplay`.
 
 ---
 
-## 14. Things that look wrong but are not
+## 15. Things that look wrong but are not
 
 - **`GameInput` registering bindings in code.** Deliberate; see §5.
 - **The `-2.0` grounded velocity in `PlayerController`.** Keeps `IsOnFloor()`
@@ -588,7 +670,7 @@ Follow §8's four steps. Keep it out of `Gameplay`.
 
 ---
 
-## 15. Related
+## 16. Related
 
 - [wolfram](https://github.com/ewanc26/wolfram) — the C11 AT Protocol SDK this
   syncs through.

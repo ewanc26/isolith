@@ -17,12 +17,17 @@ repo — see [Stat sync](#stat-sync-optional), which is genuinely optional.
   height, and separate rise/fall gravity.
 - **Gamepad first** — the analog stick drives speed directly; keyboard is the
   fallback, and on-screen hints follow whichever you last touched.
-- **Levels as data** — courses are JSON, built into geometry at load time. No
-  binary scene files to merge, and every level is a readable diff.
+- **Endless mode that reads you** — sections are generated ahead of you, and
+  each one is shaped by how the previous one actually went. Die and it eases;
+  cruise and it pushes; keep falling off *moving platforms specifically* and it
+  backs off moving platforms while staying hard everywhere else.
+- **Levels as data** — authored courses are JSON, built into geometry at load
+  time. No binary scene files to merge, and every level is a readable diff.
 - **Course hazards** — moving platforms you ride, platforms that crumble under
   you, bounce pads, spike pits, and checkpoints.
-- **No third-party assets.** Every sound is synthesised by a script in this
-  repository; every mesh and material is built in code. See [ASSETS.md](ASSETS.md).
+- **Honest assets.** Every sound is synthesised by a script in this repository
+  and every mesh is built in code; the sky and surface materials are CC0 packs,
+  fetched with pinned checksums. Full provenance in [ASSETS.md](ASSETS.md).
 
 ## Requirements
 
@@ -38,6 +43,13 @@ repo — see [Stat sync](#stat-sync-optional), which is genuinely optional.
 git clone https://github.com/ewanc26/isolith.git
 cd isolith
 dotnet build
+```
+
+The CC0 sky and material packs are committed, so there is nothing else to fetch.
+To re-pull or update them:
+
+```bash
+python3 tools/fetch_assets.py
 ```
 
 Then open `project.godot` in Godot 4.7 (.NET) and press F5, or run it directly:
@@ -73,6 +85,36 @@ remembered.
 
 Bindings live in [`src/Core/GameInput.cs`](src/Core/GameInput.cs) rather than in
 `project.godot`, so they stay readable in a diff.
+
+## Endless mode
+
+The default mode. There is no finish line: sections are generated in front of
+you, and the generator reacts to the section you just played.
+
+| What you did last section | What happens next |
+| --- | --- |
+| Died | Gaps shorten, platforms widen, hazards thin out |
+| Died on a moving platform | Moving platforms specifically become rare, then return gradually |
+| Ignored the bounce pads | Fewer bounce pads — you haven't taken to them |
+| Cleared it cleanly and quickly | Gaps stretch toward the limit of what you can jump |
+| Only just made every landing | Difficulty **holds**, even though you didn't die |
+| Hesitated before jumps | Gaps become more consistent, so distances are learnable |
+| Collected every shard | Shards start appearing over the gaps instead of on the path |
+
+The bottom of the screen tells you what it decided and why ("easing — 2 deaths").
+
+Difficulty falls faster than it rises, on purpose. Relief should arrive
+immediately; pressure should be earned.
+
+**Every generated jump is guaranteed to be possible.** Gaps are clamped against
+an envelope computed from the character's own tuning constants, so the generator
+cannot produce something you physically cannot cross — and the test suite proves
+it over thousands of generated jumps at every difficulty.
+
+Set `Seed` on the `Main` node to any non-zero value to replay a run exactly.
+
+To play the hand-authored course instead, set `Mode` to `Authored` on the `Main`
+node in the editor.
 
 ## Writing a course
 
@@ -114,8 +156,14 @@ godot --headless --path . res://scenes/Smoke.tscn
 
 This loads every course, builds it, checks the built scene matches the data, and
 verifies the spawn, every checkpoint, and the goal are all standable — a level
-whose goal hangs over nothing is valid JSON but not a finishable course. Exits
-non-zero on failure, and runs in CI.
+whose goal hangs over nothing is valid JSON but not a finishable course.
+
+It also exercises procedural generation: 3200 generated jumps across the full
+difficulty range must all be within reach, generation must be reproducible from
+its seed, and the director must ease after deaths, hold after near-misses, and
+target the specific mechanic that killed you.
+
+Exits non-zero on failure, and runs in CI.
 
 ## Stat sync (optional)
 
@@ -151,9 +199,10 @@ scenes/         Main.tscn, Player.tscn, Smoke.tscn
 src/Core/       Input map, run stats, local history, audio, smoke test
 src/Gameplay/   Player, camera, course objects, game manager
 src/Level/      Course format, builder, palette
+src/Level/Generation/  Endless mode: director, generator, jump envelope
 src/Sync/       Optional AT Protocol sync (interop + service)
 src/UI/         HUD and sync panel
-tools/          Asset generator
+tools/          Asset generator and CC0 asset fetcher
 ```
 
 All runtime code is C#. GDScript is reserved for editor-only tooling, and

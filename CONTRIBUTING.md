@@ -47,7 +47,7 @@ CI runs exactly these.
 - **Sync must never be load-bearing.** The game plays identically without a
   network, an account, or `libwolfram`.
 - **Interop is the sharp edge.** If you are touching `src/Sync/Interop/`, read
-  §8 of `AGENTS.md` first — string ownership and struct layout there are not
+  §9 of `AGENTS.md` first — string ownership and struct layout there are not
   forgiving.
 - **Changing player tuning changes level design.** Recompute the jump envelope
   in §6 of `AGENTS.md` and update the README.
