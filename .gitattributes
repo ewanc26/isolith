@@ -2,9 +2,14 @@
 
 *.wav binary
 *.png binary
+*.jpg binary
+*.hdr binary
 *.dylib binary
 *.so binary
 *.dll binary
 
 # Generated audio: keep it out of diffs, it is reproducible from tools/.
 assets/audio/*.wav linguist-generated=true
+
+# Third-party CC0 packs: vendored verbatim, never hand-edited.
+assets/thirdparty/** linguist-vendored=true

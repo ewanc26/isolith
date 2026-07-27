@@ -1,0 +1,18 @@
+{
+  "ambientcg:Concrete034": {
+    "sha256": "5839d284d94ffb8d2a56df742ec522b13dd311c52dbd42b8fd33f0409ceedb81",
+    "url": "https://ambientcg.com/get?file=Concrete034_1K-JPG.zip"
+  },
+  "ambientcg:Grass004": {
+    "sha256": "4b63495f459db8481f4d5144e4e9069345c81cf898cc71f2216f5dd3bb344469",
+    "url": "https://ambientcg.com/get?file=Grass004_1K-JPG.zip"
+  },
+  "ambientcg:Rock030": {
+    "sha256": "2fd0bc2d214e2487c19062ed0798a85dd135b41cfc12bbaed42d5acae238f989",
+    "url": "https://ambientcg.com/get?file=Rock030_1K-JPG.zip"
+  },
+  "polyhaven:qwantani_dusk_1_puresky": {
+    "sha256": "d28f81e36723852cb5dc15c82611e5be094c2a9bcbf0b279f265647b1cc11e17",
+    "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/qwantani_dusk_1_puresky_2k.hdr"
+  }
+}
