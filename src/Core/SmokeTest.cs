@@ -5,6 +5,7 @@ using Godot;
 using Isolith.Gameplay;
 using Isolith.Level;
 using Isolith.Sync.Interop;
+using Isolith.UI;
 
 namespace Isolith.Core;
 
@@ -47,6 +48,9 @@ public partial class SmokeTest : Node
 
         ReportNativeLibrary();
 
+        CheckMenu();
+        CheckSettings();
+
         PackedScene? mainScene = ResourceLoader.Load<PackedScene>("res://scenes/Main.tscn");
         if (mainScene is null)
         {
@@ -68,6 +72,7 @@ public partial class SmokeTest : Node
         GenerationTests.Run(Check);
 
         await CheckEndlessAsync(game);
+        await CheckSettingsReachTheGameAsync(mainScene);
 
         Finish();
     }
@@ -176,6 +181,123 @@ public partial class SmokeTest : Node
             endless.KillPlaneY < endless.RespawnPoint.Y);
     }
 
+    /// <summary>
+    /// Checks the title screen builds and is navigable without a mouse.
+    /// </summary>
+    /// <remarks>
+    /// Gamepad is the primary input scheme, so "every control has a focus
+    /// neighbour" is a real invariant, not polish. It is also the one that breaks
+    /// silently: a menu with an unwired control looks perfect in a screenshot and
+    /// is a dead end on a pad.
+    /// </remarks>
+    private void CheckMenu()
+    {
+        GD.Print("\n-- title screen");
+
+        string mainScene = ProjectSettings.GetSetting("application/run/main_scene").AsString();
+        Check($"the project opens on the title screen ({mainScene})", mainScene == MainMenu.MenuScene);
+
+        PackedScene? menuScene = ResourceLoader.Load<PackedScene>(MainMenu.MenuScene);
+
+        if (menuScene is null)
+        {
+            Fail($"{MainMenu.MenuScene} could not be loaded.");
+            return;
+        }
+
+        var menu = menuScene.Instantiate<MainMenu>();
+        AddChild(menu);
+
+        List<Button> buttons = FindAll<Button>(menu);
+        Check($"the menu and its settings panel build ({buttons.Count} controls)", buttons.Count >= 8);
+
+        List<Button> stranded = buttons
+            .Where(button => button.FocusMode != Control.FocusModeEnum.All
+                || button.FocusNeighborBottom.IsEmpty)
+            .ToList();
+
+        Check($"every menu control is reachable on a gamepad ({stranded.Count} stranded)",
+            stranded.Count == 0);
+
+        foreach (Button button in stranded)
+            GD.PrintErr($"        stranded: {button.Name} \"{button.Text}\"");
+
+        RemoveChild(menu);
+        menu.QueueFree();
+    }
+
+    /// <summary>Checks preferences survive a write and stay inside their range.</summary>
+    /// <remarks>
+    /// The original values are put back afterwards: this runs against the real
+    /// <c>user://</c> directory, which on a developer's machine holds their
+    /// actual settings.
+    /// </remarks>
+    private void CheckSettings()
+    {
+        GD.Print("\n-- settings");
+
+        float zoom = Settings.CameraZoom;
+        bool notes = Settings.ShowDirectorNotes;
+
+        try
+        {
+            Settings.CameraZoom = 22.0f;
+            Check("a value survives a write", Mathf.IsEqualApprox(Settings.CameraZoom, 22.0f));
+
+            Settings.ShowDirectorNotes = !notes;
+            Check("a flag survives a write", Settings.ShowDirectorNotes == !notes);
+
+            Settings.CameraZoom = 9000.0f;
+            Check($"out-of-range values are clamped, not stored ({Settings.CameraZoom:F0})",
+                Settings.CameraZoom <= 30.0f);
+
+            Check($"preferences are written to {Settings.FilePath}",
+                FileAccess.FileExists(Settings.FilePath));
+        }
+        finally
+        {
+            Settings.CameraZoom = zoom;
+            Settings.ShowDirectorNotes = notes;
+        }
+    }
+
+    /// <summary>
+    /// Checks a stored preference actually reaches the thing it configures.
+    /// </summary>
+    /// <remarks>
+    /// Settings that persist perfectly and are read by nobody are the failure
+    /// this catches, so it asserts on the live camera in a freshly built session
+    /// rather than on what came back out of the file.
+    /// </remarks>
+    private async System.Threading.Tasks.Task CheckSettingsReachTheGameAsync(PackedScene mainScene)
+    {
+        GD.Print("\n-- settings reach the game");
+
+        float zoom = Settings.CameraZoom;
+
+        try
+        {
+            Settings.CameraZoom = 24.0f;
+
+            var session = mainScene.Instantiate<GameManager>();
+            AddChild(session);
+
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+            IsometricCamera? camera = session.GetNodeOrNull<IsometricCamera>("IsoCamera");
+
+            Check("a fresh session opens at the saved camera zoom",
+                camera is not null && Mathf.IsEqualApprox(camera.Size, 24.0f));
+
+            RemoveChild(session);
+            session.QueueFree();
+        }
+        finally
+        {
+            Settings.CameraZoom = zoom;
+        }
+    }
+
     private void ReportNativeLibrary()
     {
         try
@@ -209,6 +331,22 @@ public partial class SmokeTest : Node
 
             if (name.EndsWith(".json", StringComparison.Ordinal))
                 yield return $"res://courses/{name}";
+        }
+    }
+
+    private static List<T> FindAll<T>(Node root) where T : Node
+    {
+        var found = new List<T>();
+        Collect(root, found);
+        return found;
+
+        static void Collect(Node node, List<T> into)
+        {
+            if (node is T match)
+                into.Add(match);
+
+            foreach (Node child in node.GetChildren())
+                Collect(child, into);
         }
     }
 
