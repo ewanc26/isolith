@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dfcjey1bs8kc7"
-path="res://.godot/imported/qwantani_dusk_1_puresky_2k.hdr-30bfffdce260f965162a0fb90d7940b4.ctex"
+uid="uid://cgn5k7p0it1f2"
+path="res://.godot/imported/qwantani_night_puresky_2k.hdr-45a27d08b82371303e566d8f22f40c91.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/thirdparty/polyhaven/qwantani_dusk_1_puresky_2k.hdr"
-dest_files=["res://.godot/imported/qwantani_dusk_1_puresky_2k.hdr-30bfffdce260f965162a0fb90d7940b4.ctex"]
+source_file="res://assets/thirdparty/polyhaven/qwantani_night_puresky_2k.hdr"
+dest_files=["res://.godot/imported/qwantani_night_puresky_2k.hdr-45a27d08b82371303e566d8f22f40c91.ctex"]
 
 [params]
 

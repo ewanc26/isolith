@@ -5,11 +5,11 @@
 [ext_resource type="Script" path="res://src/Gameplay/IsometricCamera.cs" id="3_camera"]
 [ext_resource type="Script" path="res://src/UI/Hud.cs" id="4_hud"]
 [ext_resource type="Script" path="res://src/UI/SyncPanel.cs" id="5_sync"]
-[ext_resource type="Texture2D" path="res://assets/thirdparty/polyhaven/qwantani_dusk_1_puresky_2k.hdr" id="6_sky"]
+[ext_resource type="Texture2D" path="res://assets/thirdparty/polyhaven/qwantani_night_puresky_2k.hdr" id="6_sky"]
 
 [sub_resource type="PanoramaSkyMaterial" id="SkyMaterial_1"]
 panorama = ExtResource("6_sky")
-energy_multiplier = 1.0
+energy_multiplier = 0.09
 
 [sub_resource type="Sky" id="Sky_1"]
 sky_material = SubResource("SkyMaterial_1")
@@ -19,8 +19,8 @@ background_mode = 2
 sky = SubResource("Sky_1")
 ambient_light_source = 3
 ambient_light_color = Color(0.541176, 0.596078, 0.752941, 1)
-ambient_light_sky_contribution = 1.0
-ambient_light_energy = 1.0
+ambient_light_sky_contribution = 0.3
+ambient_light_energy = 1.15
 reflected_light_source = 2
 tonemap_mode = 3
 tonemap_white = 2.0
@@ -33,6 +33,7 @@ glow_bloom = 0.08
 fog_enabled = true
 fog_light_color = Color(0.145098, 0.176471, 0.278431, 1)
 fog_density = 0.004
+fog_sky_affect = 0.08
 
 [node name="Main" type="Node3D"]
 script = ExtResource("1_game")
