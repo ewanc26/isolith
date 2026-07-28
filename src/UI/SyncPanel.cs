@@ -18,12 +18,14 @@ namespace Isolith.UI;
 /// own local history. Sign-in state is deliberately not persisted: the app
 /// password is used for one <c>createSession</c> call and then dropped, so
 /// nothing sensitive is ever written to disk.
+///
+/// The handle and PDS are remembered, in <see cref="Settings"/> alongside every
+/// other preference — they are not secrets, and retyping a handle before every
+/// session is the kind of friction that makes an optional feature go unused.
 /// </remarks>
 [GlobalClass]
 public partial class SyncPanel : CanvasLayer
 {
-    private const string AutoSyncSetting = "user://sync.cfg";
-
     private GameManager _game = null!;
     private Hud _hud = null!;
     private SyncService _sync = null!;
@@ -60,7 +62,6 @@ public partial class SyncPanel : CanvasLayer
         _sync.RunsFetched += OnRunsFetched;
         _game.RunCompleted += OnRunCompleted;
 
-        _autoSync.ButtonPressed = LoadAutoSyncPreference();
         _panel.Visible = false;
         RefreshStatus();
     }
@@ -111,6 +112,13 @@ public partial class SyncPanel : CanvasLayer
         {
             // The password has done its job; keep it out of memory and off screen.
             _password.Text = string.Empty;
+
+            // Remembered only once a sign-in has actually succeeded, so a typo
+            // is never the thing that comes back next session.
+            Settings.SyncHandle = _sync.Handle;
+            Settings.SyncService = string.IsNullOrWhiteSpace(_service.Text)
+                ? SyncService.DefaultService
+                : _service.Text.Trim();
         }
     }
 
@@ -167,21 +175,6 @@ public partial class SyncPanel : CanvasLayer
         }
 
         _sync.PublishRun(_lastRun);
-    }
-
-    private void OnAutoSyncToggled(bool enabled)
-    {
-        using FileAccess file = FileAccess.Open(AutoSyncSetting, FileAccess.ModeFlags.Write);
-        file?.StoreString(enabled ? "1" : "0");
-    }
-
-    private static bool LoadAutoSyncPreference()
-    {
-        if (!FileAccess.FileExists(AutoSyncSetting))
-            return false;
-
-        using FileAccess file = FileAccess.Open(AutoSyncSetting, FileAccess.ModeFlags.Read);
-        return file?.GetAsText().Trim() == "1";
     }
 
     private void RefreshStatus()
@@ -247,10 +240,13 @@ public partial class SyncPanel : CanvasLayer
             "libwolfram. The game keeps its own local history either way."));
 
         _identifier = Field(column, "Handle or DID", "you.example.com");
+        _identifier.Text = Settings.SyncHandle;
+
         _password = Field(column, "App password", "xxxx-xxxx-xxxx-xxxx");
         _password.Secret = true;
+
         _service = Field(column, "PDS or entryway", SyncService.DefaultService);
-        _service.Text = SyncService.DefaultService;
+        _service.Text = Settings.SyncService;
 
         column.AddChild(Caption(
             "Use an app password, not your account password. It is sent once to create " +
@@ -272,8 +268,14 @@ public partial class SyncPanel : CanvasLayer
         _publishNow.Pressed += OnPublishNowPressed;
         buttons.AddChild(_publishNow);
 
-        _autoSync = new CheckBox { Text = "Publish every completed run automatically" };
-        _autoSync.Toggled += OnAutoSyncToggled;
+        // Seeded before the handler is attached, so restoring the saved value
+        // does not immediately write it back.
+        _autoSync = new CheckBox
+        {
+            Text = "Publish every completed run automatically",
+            ButtonPressed = Settings.AutoSync,
+        };
+        _autoSync.Toggled += enabled => Settings.AutoSync = enabled;
         column.AddChild(_autoSync);
 
         column.AddChild(new HSeparator());

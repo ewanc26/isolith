@@ -64,6 +64,11 @@ public partial class IsometricCamera : Camera3D
     public override void _Ready()
     {
         Projection = ProjectionType.Orthogonal;
+
+        // Zoom is a player preference, not a scene property: whatever they last
+        // zoomed to — in a previous session or on the settings slider — is what
+        // the next run opens at.
+        ViewSize = Mathf.Clamp(Settings.CameraZoom, MinViewSize, MaxViewSize);
         Size = ViewSize;
 
         // Orthographic depth range must comfortably contain the scene; the
@@ -162,6 +167,10 @@ public partial class IsometricCamera : Camera3D
     private void AdjustZoom(float amount)
     {
         ViewSize = Mathf.Clamp(ViewSize + amount, MinViewSize, MaxViewSize);
+
+        // Persisted, so the in-game zoom keys and the settings slider are two
+        // views of one value rather than two settings that disagree.
+        Settings.CameraZoom = ViewSize;
     }
 
     /// <summary>Drops the camera straight onto the target, skipping the follow lag.</summary>

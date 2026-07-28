@@ -95,6 +95,10 @@ public partial class GameManager : Node3D
 
     public override void _Ready()
     {
+        // Normally the title screen has already done both. Repeating them here
+        // costs nothing and keeps a session launched straight into Main.tscn —
+        // from the editor, or from the smoke test — behaving like a real one.
+        Settings.Apply();
         GameInput.Configure();
 
         _player = RequireChild<PlayerController>("Player");
@@ -118,23 +122,14 @@ public partial class GameManager : Node3D
 
     public override void _Process(double delta)
     {
-        if (State == GameState.Playing)
-        {
-            _elapsedSeconds += delta;
-            Stats.TimeMs = (int)(_elapsedSeconds * 1000.0);
-            StatsChanged?.Invoke(Stats);
-
-            CheckKillPlane();
-        }
-
-        // While a panel has keyboard focus its text fields own these keys.
-        if (_uiFocused)
+        if (State != GameState.Playing)
             return;
 
-        if (Input.IsActionJustPressed(GameInput.Restart))
-            Restart();
-        else if (Input.IsActionJustPressed(GameInput.Pause))
-            TogglePause();
+        _elapsedSeconds += delta;
+        Stats.TimeMs = (int)(_elapsedSeconds * 1000.0);
+        StatsChanged?.Invoke(Stats);
+
+        CheckKillPlane();
     }
 
     // -----------------------------------------------------------------------
@@ -408,6 +403,9 @@ public partial class GameManager : Node3D
     // State
     // -----------------------------------------------------------------------
 
+    /// <summary>True while a panel holds the keyboard; see <see cref="SetUiFocus"/>.</summary>
+    public bool UiFocused => _uiFocused;
+
     /// <summary>
     /// Tells the game a UI panel has keyboard focus, so movement keys typed into
     /// a text field don't also drive the character.
@@ -419,6 +417,13 @@ public partial class GameManager : Node3D
     }
 
     /// <summary>Pauses or resumes, unless the course is already finished.</summary>
+    /// <remarks>
+    /// Driven by the Hud rather than polled here. This node is pausable, so its
+    /// <c>_Process</c> stops the instant the tree pauses and could never see the
+    /// button that unpauses it again. The Hud runs with
+    /// <see cref="Node.ProcessModeEnum.Always"/> and owns both halves of the
+    /// toggle, along with restart.
+    /// </remarks>
     public void TogglePause()
     {
         if (State == GameState.Complete)
