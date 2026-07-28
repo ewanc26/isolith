@@ -37,6 +37,9 @@ public partial class Hud : CanvasLayer
 
     private PanelContainer _pausePanel = null!;
     private Label _pauseHint = null!;
+    private Button _resumeButton = null!;
+    private SettingsPanel _settings = null!;
+    private ColorRect _modalScrim = null!;
     private Label _controls = null!;
     private bool _lastUsingGamepad;
     private bool _syncSignedIn;
@@ -53,6 +56,7 @@ public partial class Hud : CanvasLayer
         BuildCompletePanel();
         BuildPausePanel();
         BuildFooter();
+        BuildSettings();
         RefreshControlHints();
 
         _game.StatsChanged += OnStatsChanged;
@@ -83,7 +87,7 @@ public partial class Hud : CanvasLayer
 
     private void OnSectionCompleted(SectionPerformance performance, SectionSpec next)
     {
-        if (_game.Endless is not { } endless)
+        if (_game.Endless is not { } endless || !Settings.ShowDirectorNotes)
             return;
 
         _director.Text = $"{endless.Director.LastReason}   ·   difficulty {next.Difficulty:F2}";
@@ -100,6 +104,37 @@ public partial class Hud : CanvasLayer
             RefreshControlHints();
     }
 
+    /// <summary>
+    /// Pause and restart, for the whole game.
+    /// </summary>
+    /// <remarks>
+    /// Both live here rather than in <see cref="GameManager"/> because the Hud is
+    /// the only part of a session that keeps running while the tree is paused
+    /// (<see cref="Node.ProcessModeEnum.Always"/>). A pausable node can pause the
+    /// game but can never see the input that would unpause it.
+    ///
+    /// Event-driven rather than polled, so a press is consumed exactly once. A
+    /// polled <c>IsActionJustPressed</c> stays true for the rest of the frame,
+    /// which would let the same Escape both resume the game and immediately
+    /// re-pause it.
+    /// </remarks>
+    public override void _UnhandledInput(InputEvent @event)
+    {
+        // A panel with text fields owns the keyboard while it is open; the
+        // settings panel handles its own Back before the event reaches here.
+        if (_game.UiFocused)
+            return;
+
+        if (@event.IsActionPressed(GameInput.Pause))
+            _game.TogglePause();
+        else if (@event.IsActionPressed(GameInput.Restart))
+            _game.Restart();
+        else
+            return;
+
+        GetViewport().SetInputAsHandled();
+    }
+
     /// <summary>Rewrites every on-screen hint for the active input device.</summary>
     private void RefreshControlHints()
     {
@@ -108,13 +143,13 @@ public partial class Hud : CanvasLayer
         if (_lastUsingGamepad)
         {
             _controls.Text = "Left stick move   ·   A jump   ·   LB/RB turn view   ·   Y restart";
-            _pauseHint.Text = "Start to resume   ·   Y to restart";
+            _pauseHint.Text = "Left stick to choose   ·   A to select   ·   Start to resume";
             _completeHint.Text = "Y to run it again   ·   Back for sync";
         }
         else
         {
             _controls.Text = "WASD move   ·   Space jump   ·   Q/E turn view   ·   R restart";
-            _pauseHint.Text = "Esc to resume   ·   R to restart";
+            _pauseHint.Text = "Arrows to choose   ·   Enter to select   ·   Esc to resume";
             _completeHint.Text = "R to run it again   ·   F1 for sync";
         }
 
@@ -199,16 +234,74 @@ public partial class Hud : CanvasLayer
 
         Label title = Heading("Paused");
         title.HorizontalAlignment = HorizontalAlignment.Center;
+        column.AddChild(title);
+
+        Button resume = MenuKit.MenuButton("Resume", _game.TogglePause);
+        Button restart = MenuKit.MenuButton("Restart", _game.Restart);
+        Button settings = MenuKit.MenuButton("Settings", OpenSettings);
+        Button menu = MenuKit.MenuButton("Main menu", () => MainMenu.ReturnToMenu(GetTree()));
+
+        column.AddChild(resume);
+        column.AddChild(restart);
+        column.AddChild(settings);
+        column.AddChild(menu);
 
         var hint = Readout("");
         hint.HorizontalAlignment = HorizontalAlignment.Center;
         hint.Modulate = new Color(1, 1, 1, 0.6f);
         _pauseHint = hint;
-
-        column.AddChild(title);
         column.AddChild(hint);
 
+        MenuKit.FocusChain(resume, restart, settings, menu);
+        _resumeButton = resume;
+
         _pausePanel.Visible = false;
+    }
+
+    /// <summary>
+    /// The settings panel, shared with the title screen, plus the scrim that
+    /// makes it read as modal over a frozen game.
+    /// </summary>
+    /// <remarks>
+    /// Added last so it sits above every other layer of the Hud: a
+    /// <see cref="CanvasLayer"/> draws its children in tree order.
+    /// </remarks>
+    private void BuildSettings()
+    {
+        _modalScrim = MenuKit.Scrim();
+        _modalScrim.Visible = false;
+        AddChild(_modalScrim);
+
+        _settings = new SettingsPanel { Name = "SettingsPanel" };
+        AddChild(_settings);
+
+        _settings.Closed += CloseSettings;
+    }
+
+    private void OpenSettings()
+    {
+        // One panel at a time: leaving the pause menu behind the settings card
+        // would leave two focusable layers for the stick to wander between.
+        _pausePanel.Visible = false;
+        _modalScrim.Visible = true;
+
+        // Suppresses the Hud's own pause and restart handling while the panel
+        // is up, so Esc backs out of settings instead of unpausing underneath it.
+        _game.SetUiFocus(true);
+        _settings.Open();
+    }
+
+    private void CloseSettings()
+    {
+        _modalScrim.Visible = false;
+        _game.SetUiFocus(false);
+
+        // Settings is only reachable from the pause menu, so that is where Back
+        // returns to — unless the run ended while it was open.
+        _pausePanel.Visible = _game.State == GameState.Paused;
+
+        if (_pausePanel.Visible)
+            MenuKit.Focus(_resumeButton);
     }
 
     private void BuildFooter()
@@ -256,7 +349,17 @@ public partial class Hud : CanvasLayer
     private void OnStateChanged(GameState state)
     {
         _completePanel.Visible = state == GameState.Complete;
-        _pausePanel.Visible = state == GameState.Paused;
+        _pausePanel.Visible = state == GameState.Paused && !_settings.Visible;
+
+        if (state == GameState.Paused)
+        {
+            MenuKit.Focus(_resumeButton);
+            return;
+        }
+
+        // Focus follows the menu off screen. Left on a hidden button it would
+        // keep swallowing stick input that should be driving the character.
+        GetViewport().GuiReleaseFocus();
 
         if (state == GameState.Playing)
             ShowPersonalBest();

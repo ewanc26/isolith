@@ -73,12 +73,23 @@ public partial class Sfx : Node
         if (!_clips.TryGetValue(name, out AudioStream? stream) || _voices.Count == 0)
             return;
 
+        float effects = Settings.EffectsVolume;
+
+        // Silence is a real setting, not a very quiet one: -80 dB voices still
+        // occupy the pool and cut off the sounds behind them.
+        if (effects <= 0.001f)
+            return;
+
         // Round-robin so overlapping sounds don't cut each other off.
         AudioStreamPlayer voice = _voices[_next];
         _next = (_next + 1) % _voices.Count;
 
         voice.Stream = stream;
-        voice.VolumeDb = volumeDb;
+
+        // Per-clip attenuation plus the player's effects level. Master volume is
+        // not applied here — that one rides on the Master bus, so it also covers
+        // anything that is not an effect.
+        voice.VolumeDb = volumeDb + Mathf.LinearToDb(effects);
         voice.Play();
     }
 

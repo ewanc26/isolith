@@ -47,12 +47,15 @@ USER_AGENT = "isolith-asset-fetch/1.0 (+https://github.com/ewanc26/isolith)"
 
 # The sky. A 2K panorama is ample: the camera is orthographic, the scene is
 # fogged, and the sky is never the subject.
+# A night sky, not a dusk one. The game's palette is cool and dark and its
+# gameplay signals are emissive; a bright sky washes both out and leaves white
+# HUD text sitting on white background.
 HDRI = {
-    "id": "qwantani_dusk_1_puresky",
+    "id": "qwantani_night_puresky",
     "resolution": "2k",
-    "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/qwantani_dusk_1_puresky_2k.hdr",
-    "dest": "polyhaven/qwantani_dusk_1_puresky_2k.hdr",
-    "source": "https://polyhaven.com/a/qwantani_dusk_1_puresky",
+    "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/qwantani_night_puresky_2k.hdr",
+    "dest": "polyhaven/qwantani_night_puresky_2k.hdr",
+    "source": "https://polyhaven.com/a/qwantani_night_puresky",
 }
 
 # PBR materials for the neutral level geometry. Only the maps the renderer

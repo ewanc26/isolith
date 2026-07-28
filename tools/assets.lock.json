@@ -14,5 +14,9 @@
   "polyhaven:qwantani_dusk_1_puresky": {
     "sha256": "d28f81e36723852cb5dc15c82611e5be094c2a9bcbf0b279f265647b1cc11e17",
     "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/qwantani_dusk_1_puresky_2k.hdr"
+  },
+  "polyhaven:qwantani_night_puresky": {
+    "sha256": "d458fe7f20969d89eedbb7ae12d346abf68c86d844235696e7d70baad3e04cf0",
+    "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/qwantani_night_puresky_2k.hdr"
   }
 }
