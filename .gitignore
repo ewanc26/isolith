@@ -16,3 +16,7 @@ native/*.dll
 
 # macOS
 .DS_Store
+
+# Claude Code worktrees (.claude/worktrees/) branch from this repo; their
+# contents must never be committed back into it.
+.claude/
