@@ -252,6 +252,13 @@ generated assets are committed.
 and the conventions. [`docs/ecosystem.md`](docs/ecosystem.md) surveys Godot
 addons and CC0 asset sources against those constraints.
 
+## Support
+
+If you find this project useful, consider supporting its development:
+
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-F16061?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/ewancroft)
+[![GitHub Sponsors](https://img.shields.io/badge/GitHub%20Sponsors-30363D?style=for-the-badge&logo=github&logoColor=white)](https://github.com/sponsors/ewanc26)
+
 ## Licence
 
 Code is [MIT](LICENSE). Assets are additionally released under
