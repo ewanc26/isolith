@@ -30,7 +30,15 @@ namespace Isolith.Core;
 [GlobalClass]
 public partial class SmokeTest : Node
 {
-    private const int SettleFrames = 90;
+    // A time budget, not a frame count: a course with a very high spawn or
+    // checkpoint can legitimately take longer than a flat 90 frames to land,
+    // and a fixed frame count would fail those courses rather than the drop.
+    private const float SettleTimeoutSeconds = 6.0f;
+
+    // A single, named clearance used for every drop test (spawn, checkpoint,
+    // goal) so results are consistent rather than three independently
+    // trial-and-error-tuned offsets.
+    private const float StandableDropClearance = 0.5f;
 
     private readonly List<string> _failures = new();
     private int _checks;
@@ -99,26 +107,46 @@ public partial class SmokeTest : Node
         Check($"{path}: has at least one block", course.Blocks.Count > 0);
         Check($"{path}: hash is stable", course.Hash == course.Hash && course.Hash.Length == 64);
 
-        int shardNodes = CountNodes<Shard>(game);
+        // Scoped to CourseRoot, not the whole GameManager, so a Shard/Checkpoint/
+        // Goal node anywhere else in the tree (Hud, SyncPanel, ...) can't skew
+        // the count of what this course actually built.
+        Node3D courseRoot = game.GetNode<Node3D>("CourseRoot");
+
+        int shardNodes = CountNodes<Shard>(courseRoot);
         Check($"{path}: {course.ShardCount} shards built", shardNodes == course.ShardCount);
 
-        int checkpointNodes = CountNodes<Checkpoint>(game);
+        int checkpointNodes = CountNodes<Checkpoint>(courseRoot);
         Check($"{path}: {course.Checkpoints.Count} checkpoints built",
             checkpointNodes == course.Checkpoints.Count);
 
-        Check($"{path}: goal built", CountNodes<Goal>(game) == 1);
+        Check($"{path}: goal built", CountNodes<Goal>(courseRoot) == 1);
 
         // Standing room: spawn, every checkpoint, and the goal must be
         // supported, or the course cannot actually be played through.
-        await CheckStandableAsync(game, "spawn", Course.ToVector(course.Spawn));
+        Vector3 clearance = new(0, StandableDropClearance, 0);
+        await CheckStandableAsync(game, "spawn", Course.ToVector(course.Spawn) + clearance);
 
         for (int i = 0; i < course.Checkpoints.Count; i++)
         {
-            Vector3 point = Course.ToVector(course.Checkpoints[i]) + new Vector3(0, 1.2f, 0);
+            Vector3 point = Course.ToVector(course.Checkpoints[i]) + clearance;
             await CheckStandableAsync(game, $"checkpoint {i + 1}", point);
         }
 
-        await CheckStandableAsync(game, "goal", Course.ToVector(course.Goal) + new Vector3(0, 1.0f, 0));
+        await CheckStandableAsync(game, "goal", Course.ToVector(course.Goal) + clearance);
+
+        // A kill plane above the lowest thing the player must stand on is
+        // fatal by construction — they'd spawn, drop through it, and die
+        // before the course is even playable.
+        float killPlaneY = course.KillPlaneY;
+        Check($"{path}: kill plane ({killPlaneY:F1}) is below spawn",
+            Course.ToVector(course.Spawn).Y > killPlaneY);
+
+        for (int i = 0; i < course.Checkpoints.Count; i++)
+            Check($"{path}: kill plane ({killPlaneY:F1}) is below checkpoint {i + 1}",
+                Course.ToVector(course.Checkpoints[i]).Y > killPlaneY);
+
+        Check($"{path}: kill plane ({killPlaneY:F1}) is below the goal",
+            Course.ToVector(course.Goal).Y > killPlaneY);
     }
 
     /// <summary>
@@ -131,7 +159,9 @@ public partial class SmokeTest : Node
         player.InputLocked = true;
         player.Respawn(point);
 
-        for (int frame = 0; frame < SettleFrames; frame++)
+        int settleFrames = (int)(SettleTimeoutSeconds * Engine.PhysicsTicksPerSecond);
+
+        for (int frame = 0; frame < settleFrames; frame++)
         {
             await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
 

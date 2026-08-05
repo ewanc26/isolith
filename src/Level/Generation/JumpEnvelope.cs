@@ -43,12 +43,25 @@ public readonly struct JumpEnvelope
     /// </remarks>
     public const float RiseSafety = 0.62f;
 
-    private JumpEnvelope(float maxRange, float maxRise, float bounceRange, float bounceRise)
+    private readonly float _moveSpeed;
+    private readonly float _riseGravity;
+    private readonly float _fallGravity;
+    private readonly float _timeUp;
+    private readonly float _bounceTimeUp;
+
+    private JumpEnvelope(
+        float maxRange, float maxRise, float bounceRange, float bounceRise,
+        float moveSpeed, float riseGravity, float fallGravity, float timeUp, float bounceTimeUp)
     {
         MaxRange = maxRange;
         MaxRise = maxRise;
         BounceRange = bounceRange;
         BounceRise = bounceRise;
+        _moveSpeed = moveSpeed;
+        _riseGravity = riseGravity;
+        _fallGravity = fallGravity;
+        _timeUp = timeUp;
+        _bounceTimeUp = bounceTimeUp;
     }
 
     /// <summary>Horizontal distance a normal jump covers, before safety margin.</summary>
@@ -95,20 +108,53 @@ public readonly struct JumpEnvelope
         float moveSpeed, float jumpHeight, float bounceHeight,
         float riseGravity, float fallGravity)
     {
-        (float range, float rise) normal = Arc(moveSpeed, jumpHeight, riseGravity, fallGravity);
-        (float range, float rise) bounce = Arc(moveSpeed, bounceHeight, riseGravity, fallGravity);
+        (float range, float rise, float timeUp) normal = Arc(moveSpeed, jumpHeight, riseGravity, fallGravity);
+        (float range, float rise, float timeUp) bounce = Arc(moveSpeed, bounceHeight, riseGravity, fallGravity);
 
-        return new JumpEnvelope(normal.range, normal.rise, bounce.range, bounce.rise);
+        return new JumpEnvelope(
+            normal.range, normal.rise, bounce.range, bounce.rise,
+            moveSpeed, riseGravity, fallGravity, normal.timeUp, bounce.timeUp);
     }
 
-    private static (float Range, float Rise) Arc(
+    private static (float Range, float Rise, float TimeUp) Arc(
         float moveSpeed, float height, float riseGravity, float fallGravity)
     {
         float launch = Mathf.Sqrt(2.0f * riseGravity * height);
         float timeUp = launch / riseGravity;
         float timeDown = Mathf.Sqrt(2.0f * height / fallGravity);
 
-        return (moveSpeed * (timeUp + timeDown), height);
+        return (moveSpeed * (timeUp + timeDown), height, timeUp);
+    }
+
+    /// <summary>
+    /// Height of the jump arc above the takeoff point at a given horizontal
+    /// distance into the jump, clamped to the arc's own span.
+    /// </summary>
+    /// <remarks>
+    /// Used to place things — shard height over a gap, say — so they sit
+    /// inside the parabola a jump actually traces instead of at a fixed
+    /// height that only happens to fit some gaps. Same two-phase model as
+    /// <see cref="Arc"/>: constant horizontal speed, rise gravity climbing,
+    /// fall gravity descending.
+    /// </remarks>
+    public float HeightAtDistance(float horizontalDistance, bool bounce = false)
+    {
+        float range = bounce ? BounceRange : MaxRange;
+        float x = Mathf.Clamp(horizontalDistance, 0f, range);
+        float timeUp = bounce ? _bounceTimeUp : _timeUp;
+        float t = _moveSpeed > 0f ? x / _moveSpeed : 0f;
+
+        if (t <= timeUp)
+        {
+            float launch = (bounce ? BounceRise : MaxRise) is var height && height > 0f
+                ? Mathf.Sqrt(2.0f * _riseGravity * height)
+                : 0f;
+            return launch * t - 0.5f * _riseGravity * t * t;
+        }
+
+        float peak = bounce ? BounceRise : MaxRise;
+        float fallTime = t - timeUp;
+        return Mathf.Max(0f, peak - 0.5f * _fallGravity * fallTime * fallTime);
     }
 
     public override string ToString() =>

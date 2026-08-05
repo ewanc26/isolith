@@ -92,6 +92,17 @@ public static class GameInput
 
         Action(ToggleSync, 0.5f,
             Button(JoyButton.Back), Key(Godot.Key.F1));
+
+        // Without this, unplugging the only connected pad leaves UsingGamepad
+        // stuck true until the player happens to touch a key or the mouse —
+        // control hints would keep naming buttons that no longer exist.
+        Input.Singleton.JoyConnectionChanged += OnJoyConnectionChanged;
+    }
+
+    private static void OnJoyConnectionChanged(long device, bool connected)
+    {
+        if (!connected && Input.GetConnectedJoypads().Count == 0)
+            UsingGamepad = false;
     }
 
     /// <summary>

@@ -242,7 +242,7 @@ public sealed class SectionGenerator
         };
     }
 
-    private static void PlaceShards(
+    private void PlaceShards(
         SectionSpec spec,
         RandomNumberGenerator rng,
         List<(Vector3 Surface, Vector3 Direction, float Gap, Vector3 Previous)> landings,
@@ -258,10 +258,14 @@ public sealed class SectionGenerator
             if (rng.Randf() < spec.ShardRisk)
             {
                 // Over the gap: collectable only by shaping the jump around it,
-                // which is the point. Height stays inside the arc a normal jump
-                // already traces, so it is a detour, not a separate challenge.
+                // which is the point. Height is read off the arc a normal jump
+                // actually traces at the gap's horizontal midpoint, not a fixed
+                // range that only happens to fit some gaps — a wide, low gap
+                // has a much flatter arc than a short, tall one.
                 Vector3 midpoint = (landing.Previous + landing.Surface) * 0.5f;
-                shards.Add(Components(midpoint + Vector3.Up * rng.RandfRange(1.1f, 1.8f)));
+                float archHeight = _envelope.HeightAtDistance(landing.Gap * 0.5f);
+                float height = Mathf.Max(0.4f, archHeight * rng.RandfRange(0.55f, 0.8f));
+                shards.Add(Components(midpoint + Vector3.Up * height));
             }
             else
             {

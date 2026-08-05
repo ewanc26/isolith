@@ -85,6 +85,14 @@ public static class CourseBuilder
             return;
         }
 
+        // Solid, Grass, and Bounce are the only kinds meant to reach here —
+        // Hazard and Crumble return above. Anything else is a BlockKind added
+        // to the enum without a matching case here, or bad course data; either
+        // way it should be visible rather than silently rendered as plain
+        // geometry.
+        if (block.Kind is not (BlockKind.Solid or BlockKind.Grass or BlockKind.Bounce))
+            GD.PushWarning($"Isolith: unhandled BlockKind '{block.Kind}', building it as solid geometry.");
+
         var body = new StaticBody3D
         {
             Name = $"Block_{block.Kind}",

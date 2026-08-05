@@ -181,6 +181,13 @@ public partial class IsometricCamera : Camera3D
 
         _focus = Target.GlobalPosition + new Vector3(0, FocusHeight, 0);
         _hasFocus = true;
+
+        // A rotation in progress must not keep animating toward a yaw that no
+        // longer means anything once the camera has jumped to a new position —
+        // it would visibly spin on the spot after respawn/restart.
+        _currentYaw = _targetYaw;
+        _rotating = false;
+
         ApplyTransform();
     }
 }

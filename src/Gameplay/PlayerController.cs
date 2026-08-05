@@ -153,13 +153,17 @@ public partial class PlayerController : CharacterBody3D
             return;
         }
 
-        float gravity = Velocity.Y > 0f ? RiseGravity : FallGravity;
-        float y = Velocity.Y - gravity * dt;
+        float risingVelocity = Velocity.Y;
 
         // Releasing jump mid-rise cuts the arc short — the difference between a
-        // tap and a hold.
-        if (Velocity.Y > 0f && !InputLocked && Input.IsActionJustReleased(GameInput.Jump))
-            y *= JumpCutFactor;
+        // tap and a hold. Applied before gravity, not after, so the cut acts on
+        // the full rising velocity rather than on what's left once gravity has
+        // already eaten into it this frame.
+        if (risingVelocity > 0f && !InputLocked && Input.IsActionJustReleased(GameInput.Jump))
+            risingVelocity *= JumpCutFactor;
+
+        float gravity = risingVelocity > 0f ? RiseGravity : FallGravity;
+        float y = risingVelocity - gravity * dt;
 
         Velocity = Velocity with { Y = Mathf.Max(y, -MaxFallSpeed) };
     }

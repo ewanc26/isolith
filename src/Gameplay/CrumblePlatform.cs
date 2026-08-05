@@ -10,9 +10,10 @@ namespace Isolith.Gameplay;
 [GlobalClass]
 public partial class CrumblePlatform : AnimatableBody3D
 {
-    private const float WarnSeconds = 0.55f;    // shake before dropping
-    private const float FallSeconds = 1.1f;     // visible fall
-    private const float RestoreSeconds = 2.2f;  // gone, then back
+    private const float WarnSeconds = 0.55f;        // shake before dropping
+    private const float FallSeconds = 1.1f;         // visible fall
+    private const float RestoreSeconds = 2.2f;      // gone, then back
+    private const float RestoreGraceSeconds = 0.4f; // immune to re-trigger just after restoring
 
     private enum State { Idle, Warning, Falling, Gone }
 
@@ -21,6 +22,7 @@ public partial class CrumblePlatform : AnimatableBody3D
     private Vector3 _home;
     private MeshInstance3D? _mesh;
     private CollisionShape3D? _shape;
+    private float _graceTimer;
 
     /// <summary>Sets up the platform before it enters the tree.</summary>
     public void Configure(Vector3 size)
@@ -57,6 +59,9 @@ public partial class CrumblePlatform : AnimatableBody3D
 
     public override void _PhysicsProcess(double delta)
     {
+        if (_graceTimer > 0f)
+            _graceTimer = Mathf.Max(0f, _graceTimer - (float)delta);
+
         if (_state == State.Idle)
             return;
 
@@ -89,7 +94,10 @@ public partial class CrumblePlatform : AnimatableBody3D
 
     private void OnSteppedOn(Node3D body)
     {
-        if (_state != State.Idle || body is not PlayerController)
+        // The grace window keeps a player who is still standing here when
+        // the platform restores from instantly re-triggering the crumble —
+        // they haven't had a chance to react to it coming back.
+        if (_state != State.Idle || _graceTimer > 0f || body is not PlayerController)
             return;
 
         _state = State.Warning;
@@ -118,6 +126,7 @@ public partial class CrumblePlatform : AnimatableBody3D
     {
         _state = State.Idle;
         _timer = 0f;
+        _graceTimer = RestoreGraceSeconds;
         Position = _home;
         Visible = true;
         _shape?.SetDeferred(CollisionShape3D.PropertyName.Disabled, false);

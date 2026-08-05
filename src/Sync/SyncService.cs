@@ -105,7 +105,18 @@ public partial class SyncService : Node
         Run(() =>
         {
             var agent = new WolframAgent(service);
-            agent.Login(identifier.Trim(), appPassword);
+
+            try
+            {
+                agent.Login(identifier.Trim(), appPassword);
+            }
+            catch
+            {
+                // A failed login never becomes _agent, so it must be disposed
+                // here or it leaks — nothing else will ever hold a reference.
+                agent.Dispose();
+                throw;
+            }
 
             WolframAgent? previous = _agent;
             _agent = agent;
@@ -133,6 +144,13 @@ public partial class SyncService : Node
             try
             {
                 _agent?.Logout();
+            }
+            catch (WolframException ex)
+            {
+                // Best-effort: the agent is disposed below regardless, so the
+                // local session ends either way. A failed server-side logout
+                // is worth a warning, not a state stuck at Working/Failed.
+                GD.PushWarning($"Isolith sync: logout request failed ({ex.Message}); signing out locally anyway.");
             }
             finally
             {

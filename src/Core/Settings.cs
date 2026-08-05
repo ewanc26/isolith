@@ -48,7 +48,10 @@ public static class Settings
     public static float CameraZoom
     {
         get => Get(nameof(CameraZoom), 17.0f);
-        set => Set(nameof(CameraZoom), Mathf.Clamp(value, 9.0f, 30.0f));
+        // Zoom can change several times a second (wheel, triggers, held keys).
+        // It isn't pushed into the engine by Apply(), so skip the reapply —
+        // otherwise every tick re-asserts audio bus volume and window mode.
+        set => Set(nameof(CameraZoom), Mathf.Clamp(value, 9.0f, 30.0f), applyToEngine: false);
     }
 
     public static bool Fullscreen
@@ -115,7 +118,7 @@ public static class Settings
     public static void Reset()
     {
         _file = new ConfigFile();
-        _loaded = true;
+        _loaded = false;
         Save();
         Apply();
         Changed?.Invoke();
@@ -145,12 +148,15 @@ public static class Settings
         return _file.GetValue(Section, key, Variant.From(fallback)).As<T>();
     }
 
-    private static void Set<[MustBeVariant] T>(string key, T value)
+    private static void Set<[MustBeVariant] T>(string key, T value, bool applyToEngine = true)
     {
         Load();
         _file.SetValue(Section, key, Variant.From(value));
         Save();
-        Apply();
+
+        if (applyToEngine)
+            Apply();
+
         Changed?.Invoke();
     }
 

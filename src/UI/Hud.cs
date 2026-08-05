@@ -71,6 +71,7 @@ public partial class Hud : CanvasLayer
         _game.StateChanged -= OnStateChanged;
         _game.RunCompleted -= OnRunCompleted;
         _game.SectionCompleted -= OnSectionCompleted;
+        _settings.Closed -= CloseSettings;
     }
 
     public override void _Process(double delta)
@@ -370,11 +371,15 @@ public partial class Hud : CanvasLayer
         string clear = run.FullClear ? "all shards" : $"{run.ShardsCollected}/{run.ShardsTotal} shards";
         _completeDetail.Text = $"{run.TimeText}   ·   {clear}   ·   {run.Deaths} deaths";
 
+        // RunHistory.Record(run) has already run by the time this fires, so
+        // `run` is itself part of the history BestFor draws from — it can
+        // never rank worse than the best it finds. CompareForLeaderboard(run,
+        // best) is therefore 0 exactly when nothing in history outranks this
+        // run (shards and deaths included, not just time), and positive only
+        // when an older run legitimately beats it.
         RunStats? best = RunHistory.BestFor(run.CourseId, run.CourseHash);
-        if (best is not null && best.TimeMs < run.TimeMs)
-            _completeTitle.Text = "Course complete";
-        else
-            _completeTitle.Text = "Course complete — new best";
+        bool isNewBest = best is null || RunStats.CompareForLeaderboard(run, best) <= 0;
+        _completeTitle.Text = isNewBest ? "Course complete — new best" : "Course complete";
     }
 
     private void ShowPersonalBest()

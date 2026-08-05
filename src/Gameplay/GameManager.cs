@@ -258,9 +258,15 @@ public partial class GameManager : Node3D
 
             Endless.SectionCompleted += OnSectionCompleted;
             Endless.ShardCollected += OnEndlessShardCollected;
+
+            // Rolled once per session, here where Endless is first created —
+            // not on every call. Restart() calls BeginEndless() again to reset
+            // the run, and it must replay the same layout: otherwise a
+            // restart-to-retry silently reshuffles the course, and setting
+            // Seed to reproduce a bug stops working after the first death.
+            ActiveSeed = Seed != 0 ? Seed : GD.Randi() | ((ulong)GD.Randi() << 32);
         }
 
-        ActiveSeed = Seed != 0 ? Seed : GD.Randi() | ((ulong)GD.Randi() << 32);
         Endless.Begin(_player, ActiveSeed);
 
         Course = null;

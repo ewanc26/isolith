@@ -90,11 +90,21 @@ public static class RunRecord
     {
         try
         {
+            // courseId and createdAt identify and date the run; a record missing
+            // either is corrupt rather than merely sparse, and defaulting them to
+            // "" / MinValue would let it silently poison leaderboard queries.
+            string? courseId = value["courseId"]?.GetValue<string>();
+            string? createdAtText = value["createdAt"]?.GetValue<string>();
+
+            if (string.IsNullOrEmpty(courseId) ||
+                !DateTimeOffset.TryParse(createdAtText, out DateTimeOffset startedAt))
+                return null;
+
             JsonNode? shards = value["shards"];
 
             return new RunStats
             {
-                CourseId = value["courseId"]?.GetValue<string>() ?? "",
+                CourseId = courseId,
                 CourseHash = value["courseHash"]?.GetValue<string>() ?? "",
                 TimeMs = value["timeMs"]?.GetValue<int>() ?? 0,
                 Completed = value["completed"]?.GetValue<bool>() ?? false,
@@ -103,7 +113,7 @@ public static class RunRecord
                 Sections = value["sections"]?.GetValue<int>() ?? 0,
                 ShardsCollected = shards?["collected"]?.GetValue<int>() ?? 0,
                 ShardsTotal = shards?["total"]?.GetValue<int>() ?? 0,
-                StartedAt = ParseTimestamp(value["createdAt"]?.GetValue<string>()),
+                StartedAt = startedAt,
             };
         }
         catch (Exception ex) when (ex is FormatException or InvalidOperationException)
@@ -111,7 +121,4 @@ public static class RunRecord
             return null;
         }
     }
-
-    private static DateTimeOffset ParseTimestamp(string? text) =>
-        DateTimeOffset.TryParse(text, out DateTimeOffset parsed) ? parsed : DateTimeOffset.MinValue;
 }

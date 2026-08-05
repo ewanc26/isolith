@@ -1,6 +1,8 @@
+using System;
 using Godot;
 using Isolith.Core;
 using Isolith.Gameplay;
+using Isolith.Level;
 
 namespace Isolith.UI;
 
@@ -172,11 +174,32 @@ public partial class MainMenu : Control
     private static string BestText()
     {
         RunStats? endless = RunHistory.FurthestEndless();
-        RunStats? ascent = RunHistory.BestFor("ascent", string.Empty);
+        RunStats? ascent = RunHistory.BestFor("ascent", AscentHash());
 
         if (endless is { Sections: > 0 })
             return $"Furthest endless run: {endless.Sections} sections";
 
         return ascent is null ? "No runs yet" : $"Best ascent: {ascent.TimeText}";
     }
+
+    /// <summary>
+    /// The live hash of the ascent course, computed the same way completed
+    /// runs are stamped. A hardcoded or empty hash would never match a real
+    /// run's <see cref="RunStats.CourseHash"/>, so <see cref="RunHistory.BestFor"/>
+    /// would silently find nothing.
+    /// </summary>
+    private static string AscentHash()
+    {
+        try
+        {
+            return Course.Load(AscentCoursePath).Hash;
+        }
+        catch (Exception ex)
+        {
+            GD.PushWarning($"Isolith: could not hash {AscentCoursePath} ({ex.Message}).");
+            return string.Empty;
+        }
+    }
+
+    private const string AscentCoursePath = "res://courses/ascent.json";
 }

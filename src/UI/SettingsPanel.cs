@@ -17,6 +17,12 @@ public partial class SettingsPanel : CenterContainer
 
     private readonly List<Control> _focusables = new();
 
+    private HSlider _master = null!;
+    private HSlider _effects = null!;
+    private CheckBox _fullscreen = null!;
+    private HSlider _zoom = null!;
+    private CheckBox _notes = null!;
+
     public override void _Ready()
     {
         AnchorRight = 1;
@@ -40,6 +46,15 @@ public partial class SettingsPanel : CenterContainer
     /// <summary>Shows the panel and takes focus.</summary>
     public void Open()
     {
+        // A setting can change outside this panel between opens — fullscreen
+        // via Alt+Enter is the obvious one — so every control is refreshed
+        // from the live value rather than trusting whatever it last showed.
+        _master.Value = Settings.MasterVolume;
+        _effects.Value = Settings.EffectsVolume;
+        _fullscreen.ButtonPressed = Settings.Fullscreen;
+        _zoom.Value = Settings.CameraZoom;
+        _notes.ButtonPressed = Settings.ShowDirectorNotes;
+
         Visible = true;
 
         if (_focusables.Count > 0)
@@ -66,26 +81,26 @@ public partial class SettingsPanel : CenterContainer
         // --- Audio ---
         column.AddChild(Section("Audio"));
 
-        HSlider master = MenuKit.SliderRow(column, "Master volume", 0f, 1f, 0.05f,
+        _master = MenuKit.SliderRow(column, "Master volume", 0f, 1f, 0.05f,
             Settings.MasterVolume, value => Settings.MasterVolume = value, Percent);
 
-        HSlider effects = MenuKit.SliderRow(column, "Effects volume", 0f, 1f, 0.05f,
+        _effects = MenuKit.SliderRow(column, "Effects volume", 0f, 1f, 0.05f,
             Settings.EffectsVolume, value => Settings.EffectsVolume = value, Percent);
 
         // --- Display ---
         column.AddChild(Section("Display"));
 
-        CheckBox fullscreen = MenuKit.CheckRow(column, "Fullscreen", Settings.Fullscreen,
+        _fullscreen = MenuKit.CheckRow(column, "Fullscreen", Settings.Fullscreen,
             value => Settings.Fullscreen = value);
 
-        HSlider zoom = MenuKit.SliderRow(column, "Camera zoom", 9f, 30f, 1f,
+        _zoom = MenuKit.SliderRow(column, "Camera zoom", 9f, 30f, 1f,
             Settings.CameraZoom, value => Settings.CameraZoom = value,
             value => $"{value:F0} m");
 
         // --- Game ---
         column.AddChild(Section("Game"));
 
-        CheckBox notes = MenuKit.CheckRow(column,
+        _notes = MenuKit.CheckRow(column,
             "Explain difficulty changes in endless mode", Settings.ShowDirectorNotes,
             value => Settings.ShowDirectorNotes = value);
 
@@ -99,18 +114,18 @@ public partial class SettingsPanel : CenterContainer
             Settings.Reset();
 
             // Reflect the reset without rebuilding the whole panel.
-            master.Value = Settings.MasterVolume;
-            effects.Value = Settings.EffectsVolume;
-            zoom.Value = Settings.CameraZoom;
-            fullscreen.ButtonPressed = Settings.Fullscreen;
-            notes.ButtonPressed = Settings.ShowDirectorNotes;
+            _master.Value = Settings.MasterVolume;
+            _effects.Value = Settings.EffectsVolume;
+            _zoom.Value = Settings.CameraZoom;
+            _fullscreen.ButtonPressed = Settings.Fullscreen;
+            _notes.ButtonPressed = Settings.ShowDirectorNotes;
         });
         column.AddChild(reset);
 
         Button back = MenuKit.MenuButton("Back", Close);
         column.AddChild(back);
 
-        _focusables.AddRange(new Control[] { master, effects, fullscreen, zoom, notes, reset, back });
+        _focusables.AddRange(new Control[] { _master, _effects, _fullscreen, _zoom, _notes, reset, back });
         MenuKit.FocusChain(_focusables.ToArray());
 
         Visible = false;
