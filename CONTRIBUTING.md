@@ -1,59 +1,87 @@
-# Contributing
+# Contributing to Zincfox
 
-Thanks for taking a look. [`AGENTS.md`](AGENTS.md) is the detailed architecture
-guide — this file is just the practical bits.
+Zincfox is an experimental clean-room C/C++23 Minecraft: Java Edition server.
+The current implementation has an experimental protocol-767 login,
+configuration, and Play-spawn path validated with the MCP client, but no
+general real-client, version, or gameplay compatibility claim.
 
-## Setup
+## Before submitting changes
 
-```bash
-git clone https://github.com/ewanc26/isolith.git
-cd isolith
-dotnet build
-godot --path .
+Build and test with the repository's strict warnings enabled:
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build -j
+ctest --test-dir build --output-on-failure
+cmake -S . -B build-san -DCMAKE_BUILD_TYPE=Debug \
+  -DZINCFOX_ENABLE_SANITIZERS=ON
+cmake --build build-san -j
+ctest --test-dir build-san --output-on-failure
 ```
 
-Godot 4.7 (.NET build) and the .NET 10 SDK are required. `dotnet build` must run
-before Godot can launch the project — Godot loads the compiled assembly, it does
-not compile C# itself.
+Run `clang-format` on changed C/C++ files. New protocol behavior needs positive,
+malformed-input, fragmentation, and boundary coverage. Network behavior must
+remain non-blocking and bounded; prefer fixed-capacity storage, reusable
+buffers, borrowed `std::span` inputs, and explicit ownership.
 
-## Before opening a pull request
+For the real-client regression path, set `ZINCFOX_MCP_ROOT` to the local
+`mcp-minecraft` checkout and run the server on `127.0.0.1:25565`:
 
-```bash
-dotnet build                                       # must be warning-clean
-godot --headless --path . res://scenes/Smoke.tscn  # must exit 0
-python3 tools/generate_assets.py                   # must leave the tree clean
-git status --porcelain                             # should be empty
+```sh
+ZINCFOX_MCP_ROOT=/path/to/mcp-minecraft node test/client_regression.mjs
 ```
 
-CI runs exactly these.
+The harness uses two 1.21.1 clients, verifies both reach Play spawn, checks
+unsigned system-chat delivery, and exercises movement, terrain dig/place, and
+disconnect broadcasts. It uses unique bounded usernames and derives interaction
+coordinates from the generated surface so persisted player state cannot make a
+run accidentally pass or fail. It is a local development check because the MCP
+dependency is intentionally not vendored.
 
-## Conventions
+## Protocol and compatibility
 
-- Conventional commits, scoped: `feat(gameplay):`, `fix(level):`, `docs(sync):`.
-  Scopes: `build`, `core`, `level`, `gameplay`, `ui`, `sync`, `content`,
-  `assets`, `test`, `ci`, `docs`.
-- One logical change per commit.
-- Nullable reference types are on. Don't suppress warnings to get a build
-  through.
-- Comment *why*, not *what*.
+Protocol definitions belong in `src/protocol/` and version-specific behavior
+must remain isolated from transport and game state. Public references used for
+wire formats must be recorded in the change or its documentation. Do not copy
+Mojang code or claim a Minecraft version until a real client path and automated
+regression coverage exist.
 
-## Things worth knowing
+Every new long-lived allocation or queue must document its owner, normal size,
+maximum size, and growth/backpressure rule. The initial networking budget is
+32 connection slots with fixed 8 KiB receive and 128 KiB transmit buffers per slot.
+User-visible errors and connection drops must use a unique hexadecimal code;
+see `docs/error-codes.md`.
 
-- **All runtime code is C#.** GDScript is reserved for editor-only tooling under
-  `addons/`, and Python is for repository tooling in `tools/` — never for
-  anything the game loads or needs to build. See §2 of [`AGENTS.md`](AGENTS.md).
-- **Assets must be generated or hand-authored as source text.** No imported art,
-  audio, models, or fonts. See [`ASSETS.md`](ASSETS.md).
-- **Sync must never be load-bearing.** The game plays identically without a
-  network, an account, or `libwolfram`.
-- **Interop is the sharp edge.** If you are touching `src/Sync/Interop/`, read
-  §9 of `AGENTS.md` first — string ownership and struct layout there are not
-  forgiving.
-- **Changing player tuning changes level design.** Recompute the jump envelope
-  in §6 of `AGENTS.md` and update the README.
+All configurable server behavior belongs in the global `zincfox.conf` file.
+New settings need a validated finite range, a documented default, load/save
+tests, and memory/resource documentation where applicable. Dynamic settings
+must resolve to documented finite limits when host information is unavailable.
 
-## Levels
+## Commits and pull requests
 
-New courses are welcome. Drop a JSON file in `courses/`; the format is in §7 of
-`AGENTS.md`. Run the smoke test — it will tell you if the spawn, a checkpoint,
-or the goal ends up hanging over nothing.
+Use a dedicated `feat/<area>` or `fix/<area>` branch; never push feature work
+directly to `main`. Make atomic conventional commits such as
+`feat(protocol): ...`, `fix(net): ...`, or `test(protocol): ...`. Pull
+requests should explain compatibility claims, memory bounds, test commands,
+portability, and any borrowed design or reference material.
+
+## Releases
+
+Zincfox uses strict semantic versions and cuts the next sequential release when
+a substantial tranche is ready. Substantial means a user-visible protocol or
+gameplay change, persistence/world-format change, compatibility claim, public
+interface change, or material resource-budget change; documentation-only,
+test-only, formatting, and internal refactoring changes do not require a
+release unless they alter the published contract.
+
+Before cutting a release, audit the commits since the latest tag. Update only
+the `VERSION` line in `CMakeLists.txt`, commit that bump with the finished
+tranche, create a signed annotated `v<major>.<minor>.<patch>` tag on the same
+commit (or an annotated tag if signing is unavailable), push both, and create a
+GitHub release with generated notes. Releases before `v1.0.0` are source-only;
+release artifacts begin with `v1.0.0`. Never skip a version or create a tag or
+release without its matching version commit.
+
+Zincfox is licensed under the GNU Affero General Public License v3.0. Keep
+license notices and attribution intact when using external references or
+borrowed designs.
