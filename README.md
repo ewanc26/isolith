@@ -266,3 +266,13 @@ Code is [MIT](LICENSE). Assets are additionally released under
 [ASSETS.md](ASSETS.md).
 
 [wolfram]: https://github.com/ewanc26/wolfram
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=ewanc26%2Fisolith&type=date&legend=bottom-right">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=ewanc26/isolith&type=date&theme=dark&legend=bottom-right" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=ewanc26/isolith&type=date&legend=bottom-right" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=ewanc26/isolith&type=date&legend=bottom-right" />
+ </picture>
+</a>
