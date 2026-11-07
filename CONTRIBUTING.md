@@ -16,4 +16,4 @@ An isometric 3D platformer built with Godot 4.7 and C#, with optional AT Protoco
 
 ## Recent direction
 
-Recent commits: Sync AGENTS.md from zincfox; Sync AGENTS.md from zincfox; Sync AGENTS.md from zincfox; Sync CONTRIBUTING.md from zincfox; Sync CONTRIBUTING.md from zincfox
+Recent commits: docs: clarify Wolfram build gate policy in AGENTS.md; chore: clean up linguist and gitignore rules; docs: add Star History chart; docs: tailor contributor and agent guidance (#52); Update issue template: config.yml; Update issue template: documentation.yml; Update issue template: feature_request.yml
