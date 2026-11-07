@@ -18,9 +18,30 @@ An isometric 3D platformer built with Godot 4.7 and C#, with optional AT Protoco
 - Use feature branches and pull requests.
 - Treat generated files, credentials, deployment configuration, and release metadata as sensitive.
 
-## Recent history
+| In scope | Out of scope |
+| --- | --- |
+| Single-player platforming | Multiplayer, netcode |
+| Data-driven courses (JSON) | An in-engine level editor |
+| Local run history | A server, an account system |
+| Optional per-user repo sync | Cross-user leaderboards (needs an AppView) |
+| Code-generated assets | Imported art, audio, or fonts |
 
-| In scope | Out of scope |; | --- | --- |; | Single-player platforming | Multiplayer, netcode |; | Data-driven courses (JSON) | An in-engine level editor |; | Local run history | A server, an account system |; | Optional per-user repo sync | Cross-user leaderboards (needs an AppView) |; | Code-generated assets | Imported art, audio, or fonts |; ### The one rule that shapes everything; **Sync is never load-bearing.** If `libwolfram` is missing, the network is down,; the player never signs in, or a record write fails, the game must play exactly; the same. Every code path in `src/Sync/` is allowed to fail; no code path in; `src/Gameplay/` may depend on one succeeding.; If `libwolfram` IS present, it must be correctly linked. A silent missing or; mismatched Wolfram build produces a binary that compiles but fails at runtime; in ways that look like network errors. The build system must refuse to ship; without Wolfram when the protocol layer is required.; If you find yourself writing `if (syncFailed) { …gameplay change… }`, stop.; ---
+### The one rule that shapes everything
+
+**Sync is never load-bearing.** If `libwolfram` is missing, the network is down,
+the player never signs in, or a record write fails, the game must play exactly
+the same. Every code path in `src/Sync/` is allowed to fail; no code path in
+`src/Gameplay/` may depend on one succeeding.
+
+If `libwolfram` IS present, it must be correctly linked. A silent missing or
+mismatched Wolfram build produces a binary that compiles but fails at runtime
+in ways that look like network errors. The build system must refuse to ship
+without Wolfram when the protocol layer is required.
+
+If you find yourself writing `if (syncFailed) { …gameplay change… }`, stop.
+
+---
+
 ## 2. Languages
 
 Three languages appear in this repository. The split between them is strict.
