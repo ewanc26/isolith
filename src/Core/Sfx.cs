@@ -16,6 +16,7 @@ namespace Isolith.Core;
 public partial class Sfx : Node
 {
     public const string Jump = "jump";
+    public const string Dash = "dash";
     public const string Land = "land";
     public const string Collect = "collect";
     public const string Bounce = "bounce";
@@ -33,7 +34,7 @@ public partial class Sfx : Node
         // Keep playing while the tree is paused, so menu sounds still work.
         ProcessMode = ProcessModeEnum.Always;
 
-        foreach (string name in new[] { Jump, Land, Collect, Bounce, Death, Complete })
+        foreach (string name in new[] { Jump, Dash, Land, Collect, Bounce, Death, Complete })
             Load(name);
 
         for (int i = 0; i < VoiceCount; i++)

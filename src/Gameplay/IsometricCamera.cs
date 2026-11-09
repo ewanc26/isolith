@@ -61,6 +61,22 @@ public partial class IsometricCamera : Camera3D
     private Vector3 _focus;
     private bool _hasFocus;
 
+    private float _shakeAmplitude;
+    private float _shakeTime;
+    private float _shakeDuration = 0.25f;
+
+    /// <summary>
+    /// Adds a short positional shake. Stacked calls take the stronger of the
+    /// two rather than summing, so a death during a landing thud does not
+    /// compound into a nauseating jolt.
+    /// </summary>
+    public void Shake(float amplitude = 0.35f, float duration = 0.25f)
+    {
+        _shakeAmplitude = Mathf.Max(_shakeAmplitude, amplitude);
+        _shakeDuration = Mathf.Max(0.01f, duration);
+        _shakeTime = _shakeDuration;
+    }
+
     public override void _Ready()
     {
         Projection = ProjectionType.Orthogonal;
@@ -99,6 +115,10 @@ public partial class IsometricCamera : Camera3D
 
         AdvanceRotation(dt);
         FollowTarget(dt);
+
+        if (_shakeTime > 0f)
+            _shakeTime = Mathf.Max(0f, _shakeTime - dt);
+
         ApplyTransform();
     }
 
@@ -160,7 +180,21 @@ public partial class IsometricCamera : Camera3D
 
         // Basis.Z points away from the view direction, so stepping along it
         // pulls the camera back from what it is looking at.
-        GlobalPosition = _focus + Transform.Basis.Z * FollowDistance;
+        Vector3 offset = Vector3.Zero;
+
+        if (_shakeTime > 0f)
+        {
+            // Quadratic falloff reads as a single impact rather than a rattle,
+            // and the offset is in camera space so it stays screen-aligned
+            // whatever way the view has been rotated.
+            float k = _shakeTime / _shakeDuration;
+            float a = _shakeAmplitude * k * k;
+
+            offset = Transform.Basis.X * (GD.Randf() * 2f - 1f) * a
+                + Transform.Basis.Y * (GD.Randf() * 2f - 1f) * a;
+        }
+
+        GlobalPosition = _focus + Transform.Basis.Z * FollowDistance + offset;
         Size = ViewSize;
     }
 
@@ -187,6 +221,11 @@ public partial class IsometricCamera : Camera3D
         // it would visibly spin on the spot after respawn/restart.
         _currentYaw = _targetYaw;
         _rotating = false;
+
+        // A respawn is a clean slate: carrying a death shake into it would make
+        // the new position look unstable before the player has moved.
+        _shakeTime = 0f;
+        _shakeAmplitude = 0f;
 
         ApplyTransform();
     }

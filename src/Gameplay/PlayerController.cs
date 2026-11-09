@@ -54,6 +54,17 @@ public partial class PlayerController : CharacterBody3D
     /// <summary>How quickly the character turns to face its heading, in turns/second.</summary>
     [Export] public float TurnSpeed { get; set; } = 12.0f;
 
+    // --- Dashing -------------------------------------------------------------
+
+    /// <summary>Horizontal speed held for the duration of a dash.</summary>
+    [Export] public float DashSpeed { get; set; } = 13.0f;
+
+    /// <summary>Seconds a dash lasts.</summary>
+    [Export] public float DashDuration { get; set; } = 0.18f;
+
+    /// <summary>Seconds before another dash is allowed.</summary>
+    [Export] public float DashCooldown { get; set; } = 0.85f;
+
     // --- Wiring --------------------------------------------------------------
 
     /// <summary>The camera whose yaw defines "forward". Set by the game manager.</summary>
@@ -67,6 +78,9 @@ public partial class PlayerController : CharacterBody3D
 
     /// <summary>Raised on landing, with the vertical speed at impact.</summary>
     public event Action<float>? Landed;
+
+    /// <summary>Raised when a dash starts, for sound and particles.</summary>
+    public event Action? Dashed;
 
     /// <summary>True while the player is frozen (course complete, paused, respawning).</summary>
     public bool InputLocked { get; set; }
@@ -83,6 +97,9 @@ public partial class PlayerController : CharacterBody3D
 
     private float _coyoteTimer;
     private float _jumpBufferTimer;
+    private float _dashTimer;
+    private float _dashCooldownTimer;
+    private Vector3 _dashDirection;
     private bool _wasOnFloor;
     private float _previousFallSpeed;
     private float _facing;
@@ -114,6 +131,7 @@ public partial class PlayerController : CharacterBody3D
 
         UpdateTimers(dt);
         ApplyGravity(dt);
+        TryStartDash();
         ApplyHorizontal(dt);
         TryJump();
 
@@ -137,6 +155,8 @@ public partial class PlayerController : CharacterBody3D
     private void UpdateTimers(float dt)
     {
         _coyoteTimer = IsOnFloor() ? CoyoteTime : Mathf.Max(0f, _coyoteTimer - dt);
+        _dashTimer = Mathf.Max(0f, _dashTimer - dt);
+        _dashCooldownTimer = Mathf.Max(0f, _dashCooldownTimer - dt);
 
         if (!InputLocked && Input.IsActionJustPressed(GameInput.Jump))
             _jumpBufferTimer = JumpBufferTime;
@@ -170,6 +190,18 @@ public partial class PlayerController : CharacterBody3D
 
     private void ApplyHorizontal(float dt)
     {
+        // During a dash the controller is out of the loop: the burst is the
+        // whole point of the move, and letting acceleration or friction fight
+        // it would make the speed depend on whatever was held beforehand.
+        if (_dashTimer > 0f)
+        {
+            Velocity = new Vector3(
+                _dashDirection.X * DashSpeed,
+                Velocity.Y,
+                _dashDirection.Z * DashSpeed);
+            return;
+        }
+
         Vector3 desired = InputLocked ? Vector3.Zero : ReadMoveInput() * MoveSpeed;
         Vector2 planar = new(Velocity.X, Velocity.Z);
         Vector2 target = new(desired.X, desired.Z);
@@ -181,6 +213,42 @@ public partial class PlayerController : CharacterBody3D
 
         planar = planar.MoveToward(target, rate * dt);
         Velocity = new Vector3(planar.X, Velocity.Y, planar.Y);
+    }
+
+    /// <summary>
+    /// Starts a dash in the current movement direction, or straight ahead when
+    /// no direction is held.
+    /// </summary>
+    /// <remarks>
+    /// A dash is strictly additive to the traversal the physics envelope
+    /// describes: it never shortens a jump and generated courses are clamped
+    /// against a normal jump, so adding this cannot make a section
+    /// uncrossable. It can only make one easier.
+    /// </remarks>
+    private void TryStartDash()
+    {
+        if (InputLocked || _dashTimer > 0f || _dashCooldownTimer > 0f)
+            return;
+
+        if (!Input.IsActionJustPressed(GameInput.Dash))
+            return;
+
+        Vector3 direction = ReadMoveInput();
+
+        if (direction.LengthSquared() < 0.0001f)
+            direction = new Vector3(Mathf.Sin(_facing), 0f, Mathf.Cos(_facing));
+
+        _dashDirection = direction.Normalized();
+        _dashTimer = DashDuration;
+        _dashCooldownTimer = DashCooldown;
+
+        Velocity = new Vector3(
+            _dashDirection.X * DashSpeed,
+            Velocity.Y,
+            _dashDirection.Z * DashSpeed);
+
+        Stretch();
+        Dashed?.Invoke();
     }
 
     /// <summary>
@@ -326,6 +394,9 @@ public partial class PlayerController : CharacterBody3D
         GlobalPosition = position;
         _coyoteTimer = 0f;
         _jumpBufferTimer = 0f;
+        _dashTimer = 0f;
+        _dashCooldownTimer = 0f;
+        _dashDirection = Vector3.Zero;
         _wasOnFloor = false;
         _previousFallSpeed = 0f;
         _squashTarget = Vector3.One;

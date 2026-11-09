@@ -26,7 +26,7 @@ under [CC0 1.0][cc0], so they can be reused without attribution.
 
 ## Audio
 
-Six clips, synthesised from first principles — sine partials, an exponential
+Seven clips, synthesised from first principles — sine partials, an exponential
 percussive envelope, and a one-pole-filtered noise burst for the landing thud.
 There are no samples, no recordings, and no external libraries; the generator
 uses only the Python standard library (`math`, `wave`, `struct`, `random`).
@@ -43,6 +43,7 @@ python3 tools/generate_assets.py
 | `bounce.wav` | Wobbling 220 → 900 Hz launch sweep, 280 ms |
 | `death.wav` | Detuned 520 → 130 Hz fall, 400 ms |
 | `complete.wav` | A-major arpeggio, A4 C#5 E5 A5, 950 ms |
+| `dash.wav` | Airy high-passed noise over a 760 → 240 Hz sweep, 160 ms |
 
 **Output is deterministic.** Each clip seeds its own RNG from its name, so
 regenerating produces byte-identical files. CI regenerates them and fails the

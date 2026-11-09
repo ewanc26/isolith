@@ -169,6 +169,30 @@ def complete(rng: random.Random) -> list[float]:
     return samples
 
 
+def dash(rng: random.Random) -> list[float]:
+    """A short airy whoosh: high-passed noise over a falling sweep.
+
+    Deliberately quiet and dry — it sits underneath the jump and land sounds so
+    a dash does not dominate a run of quick movements.
+    """
+    duration = 0.16
+    samples = []
+    previous = 0.0
+
+    for i in range(int(SAMPLE_RATE * duration)):
+        t = i / SAMPLE_RATE
+
+        # A one-pole low-pass tail is subtracted from fresh noise, which leaves
+        # the airy high end of the burst without a full-spectrum hiss.
+        previous = previous * 0.82 + noise(rng) * 0.18
+        air = noise(rng) - previous
+        body = sweep(760.0, 240.0, t, duration) * 0.3
+
+        samples.append((air * 0.55 + body) * envelope(t, duration, 0.003, 6.0) * 0.8)
+
+    return samples
+
+
 CLIPS = {
     "jump": jump,
     "land": land,
@@ -176,6 +200,7 @@ CLIPS = {
     "bounce": bounce,
     "death": death,
     "complete": complete,
+    "dash": dash,
 }
 
 

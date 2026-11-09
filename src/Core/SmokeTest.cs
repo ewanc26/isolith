@@ -58,6 +58,8 @@ public partial class SmokeTest : Node
 
         CheckMenu();
         CheckSettings();
+        CheckInput();
+        CheckCourseCatalog();
 
         PackedScene? mainScene = ResourceLoader.Load<PackedScene>("res://scenes/Main.tscn");
         if (mainScene is null)
@@ -147,6 +149,53 @@ public partial class SmokeTest : Node
 
         Check($"{path}: kill plane ({killPlaneY:F1}) is below the goal",
             Course.ToVector(course.Goal).Y > killPlaneY);
+    }
+
+    /// <summary>Checks the default input map covers the actions the game reads.</summary>
+    /// <remarks>
+    /// Bindings live in code, so a typo in <see cref="GameInput"/> produces an
+    /// action the controller asks for and the map has never heard of — which
+    /// fails silently as "the button does nothing". This is cheap and catches it.
+    /// </remarks>
+    private void CheckInput()
+    {
+        GD.Print("\n-- input");
+
+        // Ensure the map is populated even when the smoke test runs before a
+        // scene that would otherwise call Configure().
+        GameInput.Configure();
+
+        string[] required =
+        {
+            GameInput.MoveLeft, GameInput.MoveRight, GameInput.MoveForward, GameInput.MoveBack,
+            GameInput.Jump, GameInput.Dash, GameInput.CameraRotateLeft, GameInput.CameraRotateRight,
+            GameInput.ZoomIn, GameInput.ZoomOut, GameInput.Restart, GameInput.Pause, GameInput.ToggleSync,
+        };
+
+        foreach (string action in required)
+        {
+            Check($"'{action}' is bound",
+                InputMap.HasAction(action) && InputMap.ActionGetEvents(action).Count > 0);
+        }
+    }
+
+    /// <summary>Checks the course list used by the title screen and "next course".</summary>
+    private void CheckCourseCatalog()
+    {
+        GD.Print("\n-- course catalog");
+
+        List<CourseEntry> courses = CourseCatalog.LoadAll();
+
+        Check($"the catalog finds the authored courses ({courses.Count})", courses.Count >= 3);
+        Check("course ids are unique",
+            courses.Select(entry => entry.Course.Id).Distinct().Count() == courses.Count);
+
+        if (courses.Count >= 2)
+        {
+            CourseEntry? next = CourseCatalog.Next(courses[0].Path);
+            Check("next course wraps to a different course",
+                next is { } entry && entry.Path != courses[0].Path);
+        }
     }
 
     /// <summary>

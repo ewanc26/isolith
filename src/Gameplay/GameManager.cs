@@ -113,6 +113,7 @@ public partial class GameManager : Node3D
 
         _player.Jumped += OnJumped;
         _player.Landed += OnLanded;
+        _player.Dashed += OnDashed;
 
         if (Mode == GameMode.Endless)
             BeginEndless();
@@ -319,6 +320,8 @@ public partial class GameManager : Node3D
         Stats.ShardsCollected++;
         Stats.ShardsTotal = Endless?.ShardsSpawned ?? Stats.ShardsTotal;
         Audio.Play(Sfx.Collect);
+        _camera.Shake(0.06f, 0.12f);
+        Effects.Burst(_courseRoot, _player.GlobalPosition + Vector3.Up * 0.6f, Palette.Shard, amount: 14, speed: 3.5f);
         StatsChanged?.Invoke(Stats);
     }
 
@@ -330,6 +333,8 @@ public partial class GameManager : Node3D
     {
         Stats.ShardsCollected++;
         Audio.Play(Sfx.Collect);
+        _camera.Shake(0.06f, 0.12f);
+        Effects.Burst(_courseRoot, shard.GlobalPosition, Palette.Shard, amount: 14, speed: 3.5f);
         StatsChanged?.Invoke(Stats);
     }
 
@@ -342,6 +347,12 @@ public partial class GameManager : Node3D
     {
         Stats.Jumps++;
         Audio.Play(fromBouncePad ? Sfx.Bounce : Sfx.Jump, volumeDb: -4.0f);
+
+        if (fromBouncePad)
+        {
+            _camera.Shake(0.18f, 0.22f);
+            Effects.Burst(_courseRoot, _player.GlobalPosition, Palette.Bounce, amount: 12, speed: 3.0f);
+        }
     }
 
     private void OnLanded(float impactSpeed)
@@ -350,6 +361,18 @@ public partial class GameManager : Node3D
         // triggering a thud gets noisy fast.
         if (impactSpeed > 6.0f)
             Audio.Play(Sfx.Land, volumeDb: -8.0f);
+
+        // The camera echoes the same threshold, scaled by how hard the landing
+        // was, so a short hop is still visually silent.
+        if (impactSpeed > 9.0f)
+            _camera.Shake(Mathf.Min(0.3f, impactSpeed * 0.02f), 0.18f);
+    }
+
+    private void OnDashed()
+    {
+        Audio.Play(Sfx.Dash, volumeDb: -6.0f);
+        _camera.Shake(0.1f, 0.14f);
+        Effects.Burst(_courseRoot, _player.GlobalPosition, Palette.Bounce, amount: 10, speed: 2.6f, lifetime: 0.4f);
     }
 
     private void OnGoalReached()
@@ -364,6 +387,7 @@ public partial class GameManager : Node3D
         SetState(GameState.Complete);
 
         Audio.Play(Sfx.Complete);
+        Effects.Burst(_courseRoot, _player.GlobalPosition + Vector3.Up, Palette.Goal, amount: 44, speed: 7.0f, lifetime: 1.1f);
 
         // Saved locally first, unconditionally. Anything else that wants the
         // run — including repo sync — reacts to the event afterwards.
@@ -393,10 +417,15 @@ public partial class GameManager : Node3D
         Stats.Deaths++;
         Endless?.ReportDeath();
         Audio.Play(Sfx.Death, volumeDb: -3.0f);
+        Effects.Burst(_courseRoot, _player.GlobalPosition, Palette.Hazard, amount: 28, speed: 5.5f, lifetime: 0.8f);
         StatsChanged?.Invoke(Stats);
 
         _player.Respawn(Endless?.RespawnPoint ?? _respawnPoint);
         _camera.SnapToTarget();
+
+        // After the snap: SnapToTarget clears any in-flight shake, so this is
+        // the only ordering where a death actually reads on screen.
+        _camera.Shake(0.45f, 0.35f);
 
         // One frame of grace stops a respawn point overlapping a hazard from
         // looping deaths.
