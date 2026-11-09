@@ -16,7 +16,11 @@ repo — see [Stat sync](#stat-sync-optional), which is genuinely optional.
 - **True isometric camera** — orthographic, pitched to `atan(1/√2)`, rotatable
   in 90° steps so geometry never hides the route.
 - **Platformer feel that forgives** — coyote time, jump buffering, variable jump
-  height, and separate rise/fall gravity.
+  height, separate rise/fall gravity, and a directional dash that adds reach
+  without ever being required.
+- **Three hand-authored courses** — The Ascent, The Abyss, and Zenith, chosen
+  from the title screen, with a best time per course and a "next course" flow
+  when you finish one.
 - **Gamepad first** — the analog stick drives speed directly; keyboard is the
   fallback, and on-screen hints follow whichever you last touched. Every menu is
   fully navigable with a stick and two buttons, and the smoke test fails if a
@@ -77,6 +81,7 @@ Gamepad is the primary scheme; keyboard mirrors it.
 | --- | --- | --- |
 | Move | Left stick / D-pad | WASD or arrows |
 | Jump | A | Space |
+| Dash | B | Shift |
 | Turn view 90° | LB / RB, or flick right stick | Q / E |
 | Zoom | Triggers | `+` / `-`, mouse wheel |
 | Restart course | Y | R |
@@ -86,6 +91,10 @@ Gamepad is the primary scheme; keyboard mirrors it.
 Hold jump for height and release early to cut it short. You get a moment of
 coyote time after leaving a ledge, and a jump pressed just before landing is
 remembered.
+
+Dash is a short, fixed burst in the direction you are holding (straight ahead if
+you are holding nothing). It is additive on purpose: courses are clamped against
+a normal jump, so a dash can only make a crossing easier, never necessary.
 
 Bindings live in [`src/Core/GameInput.cs`](src/Core/GameInput.cs) rather than in
 `project.godot`, so they stay readable in a diff.
@@ -202,6 +211,15 @@ godot --path . res://scenes/Screenshot.tscn
 ```
 
 Frames land in `docs/shots/`.
+
+## Agent control (Godot MCP)
+
+Agents drive the engine through the pinned
+[Coding-Solo `godot-mcp`](https://github.com/Coding-Solo/godot-mcp) server
+declared in [`.mcp.json`](.mcp.json): run and stop the project, read debug
+output, and edit scenes and nodes without a GUI. It needs no plugin or
+GDScript, so it does not touch the C#-only policy. See [`docs/mcp.md`](docs/mcp.md)
+for setup, the shared-server caveat, and troubleshooting.
 
 ## Stat sync (optional)
 

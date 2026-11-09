@@ -18,6 +18,27 @@ An isometric 3D platformer built with Godot 4.7 and C#, with optional AT Protoco
 - Use feature branches and pull requests.
 - Treat generated files, credentials, deployment configuration, and release metadata as sensitive.
 
+## Agent control: use the Godot MCP
+
+Agents manipulate the engine through the `godot` MCP server declared in
+`.mcp.json` (Coding-Solo godot-mcp, pinned).
+
+- Point it at the repository root — `project.godot` lives here, and every tool
+  that takes a project path takes this directory.
+- Use it to run and stop the game, read its debug output, inspect the project,
+  and edit scenes and nodes.
+- It must never be used to introduce GDScript. The language policy in §2 still
+  applies; attach only `.cs` scripts. `SmokeTest` and CI will catch a violation.
+- It cannot see the game's world. Check courses and generated geometry with the
+  smoke test (`res://scenes/Smoke.tscn`) and the course JSON, not by guessing
+  from screenshots.
+- Do not auto-approve its tools; running a project executes its code.
+- Bump the pinned version in `.mcp.json` deliberately, after checking the server
+  still starts and lists its tools.
+
+Setup, the shared-server caveat, and troubleshooting are in
+[`docs/mcp.md`](docs/mcp.md).
+
 | In scope | Out of scope |
 | --- | --- |
 | Single-player platforming | Multiplayer, netcode |
@@ -464,6 +485,9 @@ on them.**
 | `BounceHeight` | 5.5 m |
 | `CoyoteTime` | 0.12 s |
 | `JumpBufferTime` | 0.14 s |
+| `DashSpeed` | 13.0 m/s |
+| `DashDuration` | 0.18 s |
+| `DashCooldown` | 0.85 s |
 
 Jump velocity is `√(2 · RiseGravity · JumpHeight)`:
 
@@ -488,6 +512,12 @@ range                         ≈ 8.8 m
 normal jump. Rise gravity is deliberately lower than fall gravity — a floaty
 rise and a fast drop is what makes a platformer feel responsive rather than
 sluggish.
+
+**Dash is additive, not part of the envelope.** A dash adds horizontal reach on
+top of a normal jump but is never required: `JumpEnvelope` and therefore every
+generated gap is clamped against the normal jump alone. Adding or retuning dash
+cannot make a generated section uncrossable, so it does not need to be folded
+into the envelope — but do not start requiring it in authored courses either.
 
 ---
 
