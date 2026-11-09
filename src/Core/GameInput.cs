@@ -19,6 +19,7 @@ public static class GameInput
     public const string MoveForward = "move_forward";
     public const string MoveBack = "move_back";
     public const string Jump = "jump";
+    public const string Dash = "dash";
     public const string CameraRotateLeft = "camera_rotate_left";
     public const string CameraRotateRight = "camera_rotate_right";
     public const string ZoomIn = "zoom_in";
@@ -69,6 +70,11 @@ public static class GameInput
         // Jump — the south face button, where a platformer player expects it.
         Action(Jump, 0.5f,
             Button(JoyButton.A), Key(Godot.Key.Space));
+
+        // Dash — the east face button. In menus that button is "back", but the
+        // gameplay tree and the UI are never live at once.
+        Action(Dash, 0.5f,
+            Button(JoyButton.B), Key(Godot.Key.Shift));
 
         // View rotation — shoulders, or flick the right stick.
         Action(CameraRotateLeft, 0.5f,
