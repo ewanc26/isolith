@@ -34,6 +34,9 @@ public partial class Hud : CanvasLayer
     private Label _completeTitle = null!;
     private Label _completeDetail = null!;
     private Label _completeHint = null!;
+    private Button _completeRestart = null!;
+    private Button _completeNext = null!;
+    private Button _completeMenu = null!;
 
     private PanelContainer _pausePanel = null!;
     private Label _pauseHint = null!;
@@ -143,13 +146,13 @@ public partial class Hud : CanvasLayer
 
         if (_lastUsingGamepad)
         {
-            _controls.Text = "Left stick move   ·   A jump   ·   LB/RB turn view   ·   Y restart";
+            _controls.Text = "Left stick move   ·   A jump   ·   B dash   ·   LB/RB turn view   ·   Y restart";
             _pauseHint.Text = "Left stick to choose   ·   A to select   ·   Start to resume";
             _completeHint.Text = "Y to run it again   ·   Back for sync";
         }
         else
         {
-            _controls.Text = "WASD move   ·   Space jump   ·   Q/E turn view   ·   R restart";
+            _controls.Text = "WASD move   ·   Space jump   ·   Shift dash   ·   Q/E turn view   ·   R restart";
             _pauseHint.Text = "Arrows to choose   ·   Enter to select   ·   Esc to resume";
             _completeHint.Text = "R to run it again   ·   F1 for sync";
         }
@@ -217,16 +220,45 @@ public partial class Hud : CanvasLayer
         _completeDetail = Readout("");
         _completeDetail.HorizontalAlignment = HorizontalAlignment.Center;
 
+        _completeRestart = MenuKit.MenuButton("Run it again", _game.Restart);
+        _completeNext = MenuKit.MenuButton("Next course", NextCourse);
+        _completeMenu = MenuKit.MenuButton("Main menu", () => MainMenu.ReturnToMenu(GetTree()));
+
+        column.AddChild(_completeTitle);
+        column.AddChild(_completeDetail);
+        column.AddChild(_completeRestart);
+        column.AddChild(_completeNext);
+        column.AddChild(_completeMenu);
+
         var hint = Readout("");
         _completeHint = hint;
         hint.HorizontalAlignment = HorizontalAlignment.Center;
         hint.Modulate = new Color(1, 1, 1, 0.6f);
-
-        column.AddChild(_completeTitle);
-        column.AddChild(_completeDetail);
         column.AddChild(hint);
 
+        MenuKit.FocusChain(_completeRestart, _completeNext, _completeMenu);
+
         _completePanel.Visible = false;
+    }
+
+    /// <summary>Loads the next authored course into this session.</summary>
+    /// <remarks>
+    /// In place rather than through the menu: the session already owns the
+    /// player, camera and audio, and <see cref="GameManager.LoadCourse"/> rebuilds
+    /// only the course root. The seed and history are untouched, so the run that
+    /// just finished is still recorded.
+    /// </remarks>
+    private void NextCourse()
+    {
+        if (_game.Course is null)
+            return;
+
+        CourseEntry? next = CourseCatalog.Next(_game.CoursePath);
+
+        if (next is not { } entry)
+            return;
+
+        _game.LoadCourse(entry.Path);
     }
 
     private void BuildPausePanel()
@@ -355,6 +387,15 @@ public partial class Hud : CanvasLayer
         if (state == GameState.Paused)
         {
             MenuKit.Focus(_resumeButton);
+            return;
+        }
+
+        if (state == GameState.Complete)
+        {
+            // The completion panel is a real menu now, so it takes focus the
+            // moment it appears; otherwise a pad is left with a dead stick on
+            // the one screen where the run is actually over.
+            MenuKit.Focus(_completeRestart);
             return;
         }
 

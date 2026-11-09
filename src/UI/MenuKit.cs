@@ -209,11 +209,21 @@ public static class MenuKit
     /// </remarks>
     public static void Focus(Control? control)
     {
-        if (control is not null && GodotObject.IsInstanceValid(control))
-            control.CallDeferred(Control.MethodName.GrabFocus);
+        if (control is null || !GodotObject.IsInstanceValid(control))
+            return;
+
+        // The deferred call can outlive the control: the smoke test builds a
+        // menu and frees it in the same frame, and a panel can be closed before
+        // the next idle. Re-checking validity and tree membership here is what
+        // keeps that from printing "!is_inside_tree()" from GrabFocus.
+        Callable.From(() =>
+        {
+            if (GodotObject.IsInstanceValid(control) && control.IsInsideTree())
+                control.GrabFocus();
+        }).CallDeferred();
     }
 
-    private static StyleBoxFlat ButtonBox(Color background, Color border) => new()
+    public static StyleBoxFlat ButtonBox(Color background, Color border) => new()
     {
         BgColor = background,
         BorderColor = border,

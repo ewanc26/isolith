@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Godot;
 using Isolith.Core;
 using Isolith.Gameplay;
@@ -25,9 +26,11 @@ public partial class MainMenu : Control
     public const string MenuScene = "res://scenes/Menu.tscn";
 
     private SettingsPanel _settings = null!;
+    private CourseSelectionPanel _courseSelection = null!;
     private Control _root = null!;
     private Label _best = null!;
     private Button _settingsButton = null!;
+    private Button _coursesButton = null!;
 
     public override void _Ready()
     {
@@ -65,12 +68,12 @@ public partial class MainMenu : Control
         column.AddChild(spacer);
 
         Button endless = MenuKit.MenuButton("Endless run", () => StartGame(GameMode.Endless));
-        Button ascent = MenuKit.MenuButton("The Ascent", () => StartGame(GameMode.Authored));
+        Button courses = MenuKit.MenuButton("Courses", () => _courseSelection.Open(() => ShowMain()));
         Button settings = MenuKit.MenuButton("Settings", () => _settings.Open());
         Button quit = MenuKit.MenuButton("Quit", () => GetTree().Quit());
 
         column.AddChild(endless);
-        column.AddChild(ascent);
+        column.AddChild(courses);
         column.AddChild(settings);
         column.AddChild(quit);
 
@@ -85,9 +88,14 @@ public partial class MainMenu : Control
                 : "Arrows to choose  ·  Enter to select"));
 
         _settingsButton = settings;
+        _coursesButton = courses;
 
         _settings = new SettingsPanel { Name = "SettingsPanel" };
         AddChild(_settings);
+
+        _courseSelection = new CourseSelectionPanel { Name = "CourseSelectionPanel", Visible = false };
+        AddChild(_courseSelection);
+        _courseSelection.CourseSelected += course => StartAuthoredCourse(course.Path);
 
         _settings.Closed += () =>
         {
@@ -98,8 +106,9 @@ public partial class MainMenu : Control
         // Opening settings hides the menu behind it rather than stacking two
         // focusable layers, which would let the stick wander between them.
         settings.Pressed += () => _root.Visible = false;
+        courses.Pressed += () => _root.Visible = false;
 
-        MenuKit.FocusChain(endless, ascent, settings, quit);
+        MenuKit.FocusChain(endless, courses, settings, quit);
         MenuKit.Focus(endless);
     }
 
@@ -117,6 +126,29 @@ public partial class MainMenu : Control
         game.Mode = mode;
 
         Swap(GetTree(), game);
+    }
+
+    private void StartAuthoredCourse(string coursePath)
+    {
+        PackedScene? scene = ResourceLoader.Load<PackedScene>(GameScene);
+
+        if (scene is null)
+        {
+            GD.PushError($"Isolith: could not load {GameScene}.");
+            return;
+        }
+
+        var game = scene.Instantiate<GameManager>();
+        game.Mode = GameMode.Authored;
+        game.CoursePath = coursePath;
+
+        Swap(GetTree(), game);
+    }
+
+    private void ShowMain()
+    {
+        _root.Visible = true;
+        MenuKit.Focus(_coursesButton);
     }
 
     /// <summary>Ends the current session and comes back to the title screen.</summary>
@@ -174,32 +206,15 @@ public partial class MainMenu : Control
     private static string BestText()
     {
         RunStats? endless = RunHistory.FurthestEndless();
-        RunStats? ascent = RunHistory.BestFor("ascent", AscentHash());
 
         if (endless is { Sections: > 0 })
             return $"Furthest endless run: {endless.Sections} sections";
 
-        return ascent is null ? "No runs yet" : $"Best ascent: {ascent.TimeText}";
-    }
+        RunStats? bestCourseRun = CourseCatalog.LoadAll()
+            .Select(entry => RunHistory.BestFor(entry.Course.Id, entry.Course.Hash))
+            .Where(run => run is not null)
+            .MinBy(run => run!.TimeMs);
 
-    /// <summary>
-    /// The live hash of the ascent course, computed the same way completed
-    /// runs are stamped. A hardcoded or empty hash would never match a real
-    /// run's <see cref="RunStats.CourseHash"/>, so <see cref="RunHistory.BestFor"/>
-    /// would silently find nothing.
-    /// </summary>
-    private static string AscentHash()
-    {
-        try
-        {
-            return Course.Load(AscentCoursePath).Hash;
-        }
-        catch (Exception ex)
-        {
-            GD.PushWarning($"Isolith: could not hash {AscentCoursePath} ({ex.Message}).");
-            return string.Empty;
-        }
+        return bestCourseRun is null ? "No runs yet" : $"Best time: {bestCourseRun.TimeText}";
     }
-
-    private const string AscentCoursePath = "res://courses/ascent.json";
 }
