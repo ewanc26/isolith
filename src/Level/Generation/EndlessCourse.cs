@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Godot;
 using Isolith.Gameplay;
+using Isolith.Level;
 
 namespace Isolith.Level.Generation;
 
@@ -140,6 +141,7 @@ public partial class EndlessCourse : Node3D
             MoversPresent = generated.MoverCount,
             BouncePadsPresent = generated.BounceCount,
             CrumblesPresent = generated.CrumbleCount,
+            IcePresent = generated.IceCount,
         };
 
         var section = new LiveSection
@@ -311,6 +313,12 @@ public partial class EndlessCourse : Node3D
 
             case CrumblePlatform:
                 current.CrumbleDeaths++;
+                break;
+
+            // Ice is ordinary geometry the builder marks with metadata, so
+            // the tell is the mark rather than a type of its own.
+            case StaticBody3D floor when floor.HasMeta(CourseBuilder.IceMeta):
+                current.IceDeaths++;
                 break;
         }
     }

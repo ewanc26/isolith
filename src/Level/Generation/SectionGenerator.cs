@@ -35,6 +35,7 @@ public sealed class GeneratedSection
     public required int MoverCount { get; init; }
     public required int BounceCount { get; init; }
     public required int CrumbleCount { get; init; }
+    public required int IceCount { get; init; }
     public required int ShardCount { get; init; }
 
     /// <summary>Every jump in the section, in order.</summary>
@@ -84,7 +85,7 @@ public sealed class SectionGenerator
         Vector3 direction = entry.Direction;
         float previousHalf = entry.HalfExtent;
 
-        int moverCount = 0, bounceCount = 0, crumbleCount = 0;
+        int moverCount = 0, bounceCount = 0, crumbleCount = 0, iceCount = 0;
         float pathLength = 0f;
         var path = new List<PathStep>();
 
@@ -162,6 +163,7 @@ public sealed class SectionGenerator
 
                 if (kind == BlockKind.Bounce) bounceCount++;
                 if (kind == BlockKind.Crumble) crumbleCount++;
+                if (kind == BlockKind.Ice) iceCount++;
 
                 surface = landing;
                 pathLength += advance;
@@ -203,6 +205,7 @@ public sealed class SectionGenerator
             MoverCount = moverCount,
             BounceCount = bounceCount,
             CrumbleCount = crumbleCount,
+            IceCount = iceCount,
             ShardCount = shards.Count,
             Path = path,
         };
@@ -221,9 +224,14 @@ public sealed class SectionGenerator
 
         // Crumbling platforms are never the section's first landing — arriving
         // from the previous section onto ground that is already failing gives
-        // the player no chance to read it.
+        // the player no chance to read it. Ice for the same reason: arriving
+        // onto a surface that keeps the landing's momentum needs a read the
+        // approach did not give.
         if (step > 0 && rng.Randf() < spec.CrumbleChance)
             return BlockKind.Crumble;
+
+        if (step > 0 && rng.Randf() < spec.IceChance)
+            return BlockKind.Ice;
 
         return rng.Randf() < 0.30f ? BlockKind.Grass : BlockKind.Solid;
     }

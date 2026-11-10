@@ -40,6 +40,13 @@ public sealed class SectionSpec
     /// <summary>Chance a platform is a crumbling one, 0–1.</summary>
     public float CrumbleChance { get; init; }
 
+    /// <summary>
+    /// Chance a platform is ice, 0–1. Like crumble, never the section's first
+    /// landing: arriving onto a surface that takes the brakes away needs a read
+    /// the approach did not give.
+    /// </summary>
+    public float IceChance { get; init; }
+
     /// <summary>Chance a platform is a bounce pad, 0–1.</summary>
     public float BounceChance { get; init; }
 
@@ -76,6 +83,7 @@ public sealed class SectionSpec
         PlatformSize = 6.0f,
         HazardChance = 0f,
         CrumbleChance = 0f,
+        IceChance = 0f,
         BounceChance = 0f,
         MoverChance = 0f,
         TurnChance = 0.15f,
@@ -87,6 +95,6 @@ public sealed class SectionSpec
     public override string ToString() =>
         $"d={Difficulty:F2} n={PlatformCount} gap={GapMin:F1}-{GapMax:F1} " +
         $"rise={RiseMin:F1}-{RiseMax:F1} size={PlatformSize:F1} " +
-        $"haz={HazardChance:F2} cru={CrumbleChance:F2} bou={BounceChance:F2} mov={MoverChance:F2} " +
+        $"haz={HazardChance:F2} cru={CrumbleChance:F2} ice={IceChance:F2} bou={BounceChance:F2} mov={MoverChance:F2} " +
         $"shards={ShardCount}@{ShardRisk:F2}";
 }
