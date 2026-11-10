@@ -39,6 +39,15 @@ public enum BlockKind
     /// </summary>
     Vent,
 
+    /// <summary>
+    /// A horizontal wind wall rather than collision: while inside, the player
+    /// is dragged toward the <see cref="BlockDef.Flow"/> frame up to the wind's
+    /// own speed — slower than the wind and it decides where you go, faster
+    /// (a dash, a belt) and it touches nothing. The vent's sibling: one moves
+    /// you up, the other moves you along.
+    /// </summary>
+    Gust,
+
     /// <summary>Falls away shortly after being stood on.</summary>
     Crumble,
 }
@@ -50,9 +59,10 @@ public sealed class BlockDef
     [JsonPropertyName("size")] public float[] Size { get; init; } = { 4, 1, 4 };
 
     /// <summary>
-    /// Belt flow for a <see cref="BlockKind.Conveyor"/> block: [x, z] in the
-    /// world frame, whose magnitude is the drag speed in m/s. Ignored by the
-    /// other kinds.
+    /// Flow for a <see cref="BlockKind.Conveyor"/> or <see cref="BlockKind.Gust"/>
+    /// block: a conveyor drags the player along it while stood on, and a gust
+    /// pushes toward it while inside — [x, z] in the world frame, whose
+    /// magnitude is the speed in m/s. Ignored by the other kinds.
     /// </summary>
     [JsonPropertyName("flow")] public float[]? Flow { get; init; }
 

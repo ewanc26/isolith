@@ -80,9 +80,9 @@ public static class CourseBuilder
         // player should fall into spikes, not stand on them. Wind columns are
         // the same idea one step further on — they act on the player while
         // they are inside, so there is nothing to stand on either.
-        if (block.Kind is BlockKind.Hazard or BlockKind.Vent)
+        if (block.Kind is BlockKind.Hazard or BlockKind.Vent or BlockKind.Gust)
         {
-            AddVolume(root, block.Kind, position, size);
+            AddVolume(root, block.Kind, position, size, block.Flow);
             return;
         }
 
@@ -137,19 +137,42 @@ public static class CourseBuilder
         root.AddChild(body);
     }
 
-    private static void AddVolume(Node3D root, BlockKind kind, Vector3 position, Vector3 size)
+    private static void AddVolume(Node3D root, BlockKind kind, Vector3 position, Vector3 size, float[]? flow = null)
     {
+        if (kind == BlockKind.Gust)
+        {
+            // A gust without a usable flow is a content error, not a crash:
+            // warn loudly and build nothing, so it can never be mistaken for
+            // a wall the player cannot pass.
+            if (flow is not { Length: >= 2 })
+            {
+                GD.PushWarning("Isolith: a Gust block has no usable 'flow', building nothing.");
+                return;
+            }
+
+            var gust = new GustField();
+            gust.Configure(new Vector3(flow[0], 0f, flow[1]));
+            FinishVolume(gust, root, position, size, Palette.Updraft);
+            return;
+        }
+
         Area3D volume = kind == BlockKind.Vent
             ? new Updraft()
             : new Hazard { Name = "Hazard" };
 
+        FinishVolume(volume, root, position, size, kind == BlockKind.Vent ? Palette.Updraft : Palette.Spike);
+    }
+
+    /// <summary>Positioning, masks and shape shared by every wind or hazard volume.</summary>
+    private static void FinishVolume(Area3D volume, Node3D root, Vector3 position, Vector3 size, StandardMaterial3D material)
+    {
         volume.Position = position;
         volume.CollisionLayer = Mask(Layers.Trigger);
         volume.CollisionMask = Mask(Layers.Player);
         volume.Monitoring = true;
 
         volume.AddChild(BoxShape(size));
-        volume.AddChild(BoxMesh(size, kind == BlockKind.Vent ? Palette.Updraft : Palette.Spike));
+        volume.AddChild(BoxMesh(size, material));
         root.AddChild(volume);
     }
 

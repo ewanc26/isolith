@@ -85,6 +85,7 @@ public partial class SmokeTest : Node
         await CheckIcePhysicsAsync(game);
         await CheckConveyorPhysicsAsync(game);
         await CheckVentPhysicsAsync(game);
+        await CheckGustPhysicsAsync(game);
         await CheckSessionAsync(game);
         await CheckMovingPlatformAsync();
         await CheckCrumblePlatformAsync(game);
@@ -140,6 +141,12 @@ public partial class SmokeTest : Node
         int ventBlocks = course.Blocks.Count(block => block.Kind == BlockKind.Vent);
         Check($"{path}: {ventBlocks} wind columns built",
             CountNodes<Updraft>(courseRoot) == ventBlocks);
+
+        // Gust walls likewise: one GustField per Gust block, or the builder
+        // has stopped matching the data.
+        int gustBlocks = course.Blocks.Count(block => block.Kind == BlockKind.Gust);
+        Check($"{path}: {gustBlocks} gust walls built",
+            CountNodes<GustField>(courseRoot) == gustBlocks);
 
         // Standing room: spawn, every checkpoint, and the goal must be
         // supported, or the course cannot actually be played through.
@@ -495,6 +502,71 @@ public partial class SmokeTest : Node
         await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
 
         Check("a vent torn down mid-hold releases the player", !player.InVent);
+
+        player.InputLocked = false;
+    }
+
+    /// <summary>
+    /// Checks a gust wall drags a slow player to the wind's own speed — never
+    /// past it — and lets go when the course is torn down around them.
+    /// </summary>
+    private async System.Threading.Tasks.Task CheckGustPhysicsAsync(GameManager game)
+    {
+        GD.Print("\n-- gust walls");
+
+        Course course = Course.Parse("""
+            {
+              "id": "gust_smoke",
+              "name": "Gust smoke",
+              "spawn": [3000, 10, 0],
+              "blocks": [
+                { "pos": [3000, 3, 30], "size": [40, 1, 4], "kind": "Solid" },
+                { "pos": [3000, 5, 30], "size": [30, 6, 4], "kind": "Gust",
+                  "flow": [8, 0] }
+              ]
+            }
+            """);
+
+        CourseBuilder.Built built = CourseBuilder.Build(course, game);
+
+        PlayerController player = game.Player;
+        player.InputLocked = true;
+
+        // Dropping onto the runway inside the gust, so the wind frame applies
+        // from the first settled step and the check measures drag, not a
+        // fall.
+        player.Respawn(new Vector3(3000, 5.0f, 30));
+
+        // Settle onto the floor first, then measure how far the wind carried
+        // the player across a whole second of it.
+        for (int frame = 0; frame < 60; frame++)
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+        float x1 = player.GlobalPosition.X;
+
+        for (int frame = 0; frame < 60; frame++)
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+        float x2 = player.GlobalPosition.X;
+        float carried = player.Velocity.Length();
+
+        Check($"the gust carries a slow player along it (x {x1:F1} → {x2:F1} at {carried:F1} m/s)",
+            x2 - x1 > 3.0f && carried > 6.0f && carried < 8.5f);
+
+        Check("the hold is registered on the player", player.InGust);
+
+        // The gust blocks nothing: its drag should never have moved the
+        // player vertically.
+        Check("the gust has no say in the player's height",
+            player.GlobalPosition.Y is > 3.5f and < 4.8f);
+
+        // A course rebuild is just a tear-down and rebuilt nodes; the freed
+        // gust must release its hold without waiting for an exit event that
+        // will now never come.
+        built.Root.QueueFree();
+        await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+        Check("a gust torn down mid-hold releases the player", !player.InGust);
 
         player.InputLocked = false;
     }

@@ -179,7 +179,7 @@ Drop a JSON file in `courses/` and point `GameManager.CoursePath` at it.
 ```
 
 `kind` is one of `Solid`, `Grass`, `Hazard`, `Bounce`, `Ice`, `Conveyor`,
-`Vent`, or `Crumble`. Positions are centres and sizes are full extents, so a
+`Vent`, `Gust`, or `Crumble`. Positions are centres and sizes are full extents, so a
 block's walkable surface sits at `pos.y + size.y / 2`.
 
 `Ice` is normal collision but nearly frictionless: momentum carries, steering
@@ -195,6 +195,12 @@ you'd fight it with.
 caught; linger and you are lifted, up to a ceiling that a bounce pad's full
 launch cannot beat. Cross it on a conveyor's momentum, or slide into it off ice
 — vertical hang time is the point.
+
+`Gust` is the vent's sibling, sideways: a wind wall that pushes you along
+`"flow": [x, z]` up to the wind's own speed. Slower than the wind and it
+decides where you go; faster — a dash, a belt — and it touches nothing. Bounce
+into one and the wind carries the arc; stand on ice inside one and there is
+almost no grip to argue with it.
 
 A fully held jump clears about **2.4 m of height** and **5.9 m of distance**, so
 keep gaps inside that envelope. The smoke test will tell you if the spawn,

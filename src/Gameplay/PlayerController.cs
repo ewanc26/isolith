@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Godot;
 using Isolith.Core;
 using Isolith.Level;
@@ -110,6 +111,34 @@ public partial class PlayerController : CharacterBody3D
         if (_ventCount > 0)
             _ventCount--;
     }
+
+    // --- Gust wind ------------------------------------------------------------
+
+    /// <summary>
+    /// How quickly the wind's planar drag takes hold, in m/s per second. It
+    /// has to beat ground friction (55) or a standing player would never be
+    /// swept at all; on ice (friction 3) the wind barely even has to argue.
+    /// </summary>
+    [Export] public float GustAcceleration { get; set; } = 75.0f;
+
+    private readonly List<GustField> _gusts = new();
+
+    /// <summary>True while the player is inside at least one gust.</summary>
+    public bool InGust => _gusts.Count > 0;
+
+    /// <summary>Called by a <see cref="GustField"/> when the player enters it.</summary>
+    public void EnterGust(GustField field)
+    {
+        if (!_gusts.Contains(field))
+            _gusts.Add(field);
+    }
+
+    /// <summary>
+    /// Called by a <see cref="GustField"/> when the player leaves it, or when
+    /// the field is torn down mid-rebuild (see <see cref="GustField"/>).
+    /// Removing the field itself, not a count, keeps overlapping gusts honest.
+    /// </summary>
+    public void ExitGust(GustField field) => _gusts.Remove(field);
 
     // --- Wiring --------------------------------------------------------------
 
@@ -283,6 +312,22 @@ public partial class PlayerController : CharacterBody3D
             : grounded ? (onIce ? IceFriction : GroundFriction) : AirFriction;
 
         planar = planar.MoveToward(target, rate * dt);
+
+        // Gust, the wind-frame rule: the flow is a speed the wind is willing
+        // to bring the player to, not a force added to whatever they have.
+        // A dash or a belt-ride carrying more speed than the wind is left
+        // entirely alone, so the stack only composes in one direction — and
+        // below that speed the wind decides where the slow go.
+        if (_gusts.Count > 0)
+        {
+            // Overlapping gusts are a content choice; the first entered wins,
+            // which keeps the push deterministic frame to frame.
+            Vector3 wind = _gusts[0].Flow;
+            var blowing = new Vector2(wind.X, wind.Z);
+            if (planar.LengthSquared() < blowing.LengthSquared())
+                planar = planar.MoveToward(blowing, GustAcceleration * dt);
+        }
+
         Velocity = new Vector3(planar.X, Velocity.Y, planar.Y);
     }
 

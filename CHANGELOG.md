@@ -16,6 +16,11 @@ Platforming surface vocabulary and accessibility for the feedback it produces.
 - `Vent` block kind: a rising wind column — catches a falling player, lifts
   them while inside, and caps the rise so a bounce pad dumped straight in buys
   nothing extra. Cross it on the belt's momentum or slide in off the ice.
+- `Gust` block kind: a horizontal wind wall — pushes the player toward its
+  `flow` frame at up to the wind's own speed, and leaves anything faster
+  (a dash, a conveyor) untouched. Two gust walls join the Crosswinds course:
+  one that carries a bounce's arc to its landing, one blowing sideways across
+  the ice.
 - Three new authored courses — **Frostline**, **Slipstream**, and
   **Crosswinds** — built on those surfaces, alongside the existing movers,
   crumble platforms, and bounce pads.
