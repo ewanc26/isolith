@@ -27,9 +27,10 @@ Platforming surface vocabulary and accessibility for the feedback it produces.
   specifically, cruise and it leans in with the difficulty. Neither is ever
   the section's first landing, and each generated belt drags against the
   direction of travel, so a belt is pressure the way a mover is.
-- Three new authored courses — **Frostline**, **Slipstream**, and
-  **Crosswinds** — built on those surfaces, alongside the existing movers,
-  crumble platforms, and bounce pads.
+- Four new authored courses — **Frostline**, **Slipstream**,
+  **Crosswinds**, and **Windfall** (ice feeding a belt, a sidewind over it,
+  a gust-carried bounce, and a vent ride to the goal) — built on those
+  surfaces, alongside the existing movers, crumble platforms, and bounce pads.
 - New setting: **camera shake** (0–1). Landing thuds, deaths, bounces, and
   dashes can be dialled back or stilled entirely without touching gameplay or
   run validity.

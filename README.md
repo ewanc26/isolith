@@ -18,8 +18,8 @@ repo — see [Stat sync](#stat-sync-optional), which is genuinely optional.
 - **Platformer feel that forgives** — coyote time, jump buffering, variable jump
   height, separate rise/fall gravity, and a directional dash that adds reach
   without ever being required.
-- **Six hand-authored courses** — The Ascent, The Abyss, Zenith, Frostline,
-  Slipstream, and Crosswinds, chosen from the title screen, with a best time per
+- **Seven hand-authored courses** — The Ascent, The Abyss, Zenith, Frostline,
+  Slipstream, Crosswinds, and Windfall, chosen from the title screen, with a best time per
   course and a "next course" flow when you finish one.
   from the title screen, with a best time per course and a "next course" flow
   when you finish one.
