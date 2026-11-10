@@ -25,6 +25,11 @@ public static class CourseBuilder
     /// <summary>Metadata key marking a body with ice physics.</summary>
     public const string IceMeta = "isolith_ice";
 
+    /// <summary>
+    /// Metadata key holding a conveyor's belt flow as a world-space vector.
+    /// </summary>
+    public const string ConveyorMeta = "isolith_conveyor";
+
     /// <summary>Everything a freshly built course hands back to the game.</summary>
     public sealed record Built(
         Node3D Root,
@@ -88,13 +93,13 @@ public static class CourseBuilder
             return;
         }
 
-        // Solid, Grass, Bounce, and Ice are the only kinds meant to reach
-        // here — Hazard and Crumble return above. Anything else is a BlockKind
-        // added to the enum without a matching case here, or bad course data;
-        // either way it should be visible rather than silently rendered as
-        // plain geometry.
+        // Solid, Grass, Bounce, Ice, and Conveyor are the only kinds meant to
+        // reach here — Hazard and Crumble return above. Anything else is a
+        // BlockKind added to the enum without a matching case here, or bad
+        // course data; either way it should be visible rather than silently
+        // rendered as plain geometry.
         if (block.Kind is not (BlockKind.Solid or BlockKind.Grass
-            or BlockKind.Bounce or BlockKind.Ice))
+            or BlockKind.Bounce or BlockKind.Ice or BlockKind.Conveyor))
             GD.PushWarning($"Isolith: unhandled BlockKind '{block.Kind}', building it as solid geometry.");
 
         var body = new StaticBody3D
@@ -110,6 +115,20 @@ public static class CourseBuilder
 
         if (block.Kind == BlockKind.Ice)
             body.SetMeta(IceMeta, true);
+
+        // A conveyor without a usable flow is a content error, not a crash:
+        // warn loudly and let it behave as ordinary solid geometry.
+        if (block.Kind == BlockKind.Conveyor)
+        {
+            Vector3 flow = block.Flow is { Length: >= 2 }
+                ? new Vector3(block.Flow[0], 0f, block.Flow[1])
+                : Vector3.Zero;
+
+            if (flow.LengthSquared() < 0.0001f)
+                GD.PushWarning("Isolith: a Conveyor block has no usable 'flow', building it as solid geometry.");
+            else
+                body.SetMeta(ConveyorMeta, flow);
+        }
 
         body.AddChild(BoxShape(size));
         body.AddChild(BoxMesh(size, Palette.ForBlock(block.Kind)));

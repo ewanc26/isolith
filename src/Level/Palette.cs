@@ -32,6 +32,7 @@ public static class Palette
     public static readonly Color Bounce = Color.FromHtml("#4fc3d9");
     public static readonly Color Crumble = Color.FromHtml("#c39a5c");
     public static readonly Color Ice = Color.FromHtml("#bfe3f0");
+    public static readonly Color Flow = Color.FromHtml("#8ed14f");
     public static readonly Color Shard = Color.FromHtml("#ffd479");
     public static readonly Color Goal = Color.FromHtml("#9d7cf5");
     public static readonly Color Checkpoint = Color.FromHtml("#57d49a");
@@ -55,6 +56,7 @@ public static class Palette
     private static StandardMaterial3D? _bounce;
     private static StandardMaterial3D? _crumble;
     private static StandardMaterial3D? _ice;
+    private static StandardMaterial3D? _belt;
     private static StandardMaterial3D? _shard;
     private static StandardMaterial3D? _goal;
     private static StandardMaterial3D? _checkpointOff;
@@ -80,6 +82,13 @@ public static class Palette
     /// </summary>
     public static StandardMaterial3D Slick => _ice ??= Surface(Ice, roughness: 0.12f);
 
+    /// <summary>
+    /// A conveyor is a gameplay signal like a bounce pad: the player has to
+    /// spot where it is dragging them before they are on it, so it stays flat
+    /// and legible rather than textured.
+    /// </summary>
+    public static StandardMaterial3D Belt => _belt ??= Emissive(Flow, energy: 0.35f);
+
     // --- Gameplay signals: always flat and emissive ---------------------------
 
     public static StandardMaterial3D Spike => _hazard ??= Emissive(Hazard, energy: 0.5f);
@@ -99,6 +108,7 @@ public static class Palette
         BlockKind.Bounce => Springboard,
         BlockKind.Crumble => Fragile,
         BlockKind.Ice => Slick,
+        BlockKind.Conveyor => Belt,
         _ => Solid,
     };
 

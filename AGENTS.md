@@ -331,7 +331,8 @@ surface behaviour shouldn't mean editing the character controller.
 
 Ice is flagged the same way (`IceMeta`), and the controller swaps its ground
 acceleration and friction for the ice values when standing on a flagged body.
-Both surface behaviours stay data decisions made here.
+A conveyor's flow vector rides the same pattern (`ConveyorMeta`, a `Vector3`).
+All surface behaviours stay data decisions made here.
 
 ### `src/Level/Palette.cs`
 
@@ -553,6 +554,7 @@ sizes are **full extents**. A block's walkable surface is at
 | `Hazard` | `Area3D`; entering kills |
 | `Bounce` | Launches the player on landing |
 | `Ice` | Solid collision with near-zero friction; momentum carries and steering is mushy |
+| `Conveyor` | Solid collision that drags the player along its `flow: [x, z]`, magnitude in m/s |
 | `Crumble` | Shakes, drops, and restores after ~3.9 s |
 
 **Mover:** `{ "from": […], "to": […], "size": […], "period": s, "phase": 0–1 }`

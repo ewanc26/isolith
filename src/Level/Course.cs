@@ -24,6 +24,13 @@ public enum BlockKind
     /// <summary>Low-friction solid: the player keeps momentum and steers poorly.</summary>
     Ice,
 
+    /// <summary>
+    /// Solid surface with a belt flow: standing on it drags the player along
+    /// <see cref="BlockDef.Flow"/>. The counterpart to ice — ice takes steering
+    /// away, a conveyor adds velocity you did not ask for.
+    /// </summary>
+    Conveyor,
+
     /// <summary>Falls away shortly after being stood on.</summary>
     Crumble,
 }
@@ -33,6 +40,13 @@ public sealed class BlockDef
 {
     [JsonPropertyName("pos")] public float[] Position { get; init; } = { 0, 0, 0 };
     [JsonPropertyName("size")] public float[] Size { get; init; } = { 4, 1, 4 };
+
+    /// <summary>
+    /// Belt flow for a <see cref="BlockKind.Conveyor"/> block: [x, z] in the
+    /// world frame, whose magnitude is the drag speed in m/s. Ignored by the
+    /// other kinds.
+    /// </summary>
+    [JsonPropertyName("flow")] public float[]? Flow { get; init; }
 
     [JsonPropertyName("kind")]
     [JsonConverter(typeof(JsonStringEnumConverter))]

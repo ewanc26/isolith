@@ -224,6 +224,13 @@ public partial class PlayerController : CharacterBody3D
         // builder decides what is slippery, not this controller.
         bool grounded = IsOnFloor();
         bool onIce = grounded && StandingOn(CourseBuilder.IceMeta);
+        Vector3 flow = grounded ? ConveyorOnFloor() : Vector3.Zero;
+
+        // The express design goal of a conveyor is how far it reaches: riding
+        // one onto ice means the belt keeps feeding velocity in while the ice
+        // takes away the grip needed to fight it.
+        if (grounded)
+            target += new Vector2(flow.X, flow.Z);
 
         float rate = target.LengthSquared() > 0.01f
             ? grounded ? (onIce ? IceAcceleration : GroundAcceleration) : AirAcceleration
@@ -231,6 +238,27 @@ public partial class PlayerController : CharacterBody3D
 
         planar = planar.MoveToward(target, rate * dt);
         Velocity = new Vector3(planar.X, Velocity.Y, planar.Y);
+    }
+
+    /// <summary>
+    /// The belt flow of any conveyor under the player's feet, or zero.
+    /// </summary>
+    /// <remarks>
+    /// Multiple conveyors overlapping are a content choice; the first found
+    /// wins, which keeps the result deterministic frame to frame.
+    /// </remarks>
+    private Vector3 ConveyorOnFloor()
+    {
+        for (int i = 0; i < GetSlideCollisionCount(); i++)
+        {
+            if (GetSlideCollision(i).GetCollider() is Node node
+                && node.HasMeta(CourseBuilder.ConveyorMeta))
+            {
+                return node.GetMeta(CourseBuilder.ConveyorMeta).AsVector3();
+            }
+        }
+
+        return Vector3.Zero;
     }
 
     /// <summary>
