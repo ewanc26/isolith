@@ -33,6 +33,7 @@ public static class GenerationTests
         DirectorRaisesAfterCleanRuns(envelope, check);
         DirectorTargetsTheGuiltyMechanic(envelope, check);
         IceSpendsItsChanceAndItsTrustFollowsItsDeaths(envelope, check);
+        ConveyorsDragAgainstThePathAndTheirTrustFollowsTheirDeaths(envelope, check);
         DirectorStaysInBounds(envelope, check);
         DirectorHoldsOnEdgeLandings(envelope, check);
     }
@@ -283,6 +284,62 @@ public static class GenerationTests
             next.IceChance < 0.12f);
     }
 
+    private static void ConveyorsDragAgainstThePathAndTheirTrustFollowsTheirDeaths(JumpEnvelope envelope, Action<string, bool> check)
+    {
+        // The generator: a full belt chance turns every platform after the first
+        // into a conveyor that drags against the direction of travel, and
+        // every one of them carries the flow that makes it one.
+        var generator = new SectionGenerator(envelope);
+        var spec = new SectionSpec { PlatformCount = 6, ConveyorChance = 1.0f, Seed = 77 };
+        var entry = new SectionAnchor(Vector3.Zero, Vector3.Forward, 4.0f);
+        GeneratedSection section = generator.Generate(0, spec, entry);
+
+        check($"a full belt chance turns every platform after the first into one ({section.ConveyorCount} of {spec.PlatformCount})",
+            section.ConveyorCount == spec.PlatformCount - 1
+            && section.Course.Blocks.Count(b => b.Kind == BlockKind.Conveyor) == spec.PlatformCount - 1);
+
+        var belts = section.Course.Blocks.Where(b => b.Kind == BlockKind.Conveyor).ToList();
+        check("every generated belt carries its flow",
+            belts.Count > 0 && belts.All(b => b.Flow is { Length: 2 }
+                && Math.Sqrt(b.Flow[0] * b.Flow[0] + b.Flow[1] * b.Flow[1]) is >= 2.0 and <= 4.0));
+        check("the entry platform is never a belt",
+            section.Course.Blocks[0].Kind != BlockKind.Conveyor);
+
+        // Deterministic like everything else the generator does.
+        GeneratedSection again = generator.Generate(0, spec, entry);
+        check("belt placement is deterministic for a spec",
+            section.Course.Hash == again.Course.Hash && section.ConveyorCount == again.ConveyorCount);
+
+        // The director: a death on a belt cuts belt trust and nothing else's.
+        var director = new AdaptiveDirector(envelope, seed: 8);
+        director.Next(null);
+        for (int i = 0; i < 6; i++)
+        {
+            SectionPerformance cruised = Cruised(i, crumbles: 2);
+            cruised.IcePresent = 2;
+            cruised.ConveyorsPresent = 2;
+            director.Next(cruised);
+        }
+
+        float beltBefore = director.ConveyorTrust;
+        float iceBefore = director.IceTrust;
+
+        SectionPerformance sample = Died(7, deaths: 1);
+        sample.ConveyorsPresent = 2;
+        sample.ConveyorDeaths = 1;
+        sample.IcePresent = 2;
+        sample.IceDeaths = 0;
+
+        SectionSpec next = director.Next(sample);
+
+        check($"belt deaths cut belt trust ({beltBefore:F2} → {director.ConveyorTrust:F2})",
+            director.ConveyorTrust < beltBefore * 0.6f);
+        check($"ice trust is untouched by a belt death ({iceBefore:F2} → {director.IceTrust:F2})",
+            director.IceTrust >= iceBefore);
+        check($"the next section backs off belts (chance {next.ConveyorChance:F3})",
+            next.ConveyorChance < 0.12f);
+    }
+
     private static void DirectorHoldsOnEdgeLandings(JumpEnvelope envelope, Action<string, bool> check)
     {
         var director = new AdaptiveDirector(envelope, seed: 4);
@@ -333,6 +390,8 @@ public static class GenerationTests
                 CrumbleDeaths = rng.RandiRange(0, 3),
                 IcePresent = rng.RandiRange(0, 3),
                 IceDeaths = rng.RandiRange(0, 3),
+                ConveyorsPresent = rng.RandiRange(0, 3),
+                ConveyorDeaths = rng.RandiRange(0, 3),
                 BouncePadsPresent = rng.RandiRange(0, 3),
                 BouncePadsUsed = rng.RandiRange(0, 3),
             };
@@ -345,7 +404,7 @@ public static class GenerationTests
             if (spec.GapMax > envelope.SafeGap + 0.001f || spec.PlatformCount < 1)
                 inRange = false;
 
-            if (spec.MoverChance is < 0f or > 1f || spec.HazardChance is < 0f or > 1f || spec.IceChance is < 0f or > 1f)
+            if (spec.MoverChance is < 0f or > 1f || spec.HazardChance is < 0f or > 1f || spec.IceChance is < 0f or > 1f || spec.ConveyorChance is < 0f or > 1f)
                 inRange = false;
         }
 

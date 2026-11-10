@@ -142,6 +142,7 @@ public partial class EndlessCourse : Node3D
             BouncePadsPresent = generated.BounceCount,
             CrumblesPresent = generated.CrumbleCount,
             IcePresent = generated.IceCount,
+            ConveyorsPresent = generated.ConveyorCount,
         };
 
         var section = new LiveSection
@@ -316,9 +317,15 @@ public partial class EndlessCourse : Node3D
                 break;
 
             // Ice is ordinary geometry the builder marks with metadata, so
-            // the tell is the mark rather than a type of its own.
+            // the tell is the mark rather than a type of its own. So is a
+            // conveyor: the slide and the drag both belong to the floor the
+            // player last stood on.
             case StaticBody3D floor when floor.HasMeta(CourseBuilder.IceMeta):
                 current.IceDeaths++;
+                break;
+
+            case StaticBody3D floor when floor.HasMeta(CourseBuilder.ConveyorMeta):
+                current.ConveyorDeaths++;
                 break;
         }
     }

@@ -47,6 +47,12 @@ public sealed class SectionSpec
     /// </summary>
     public float IceChance { get; init; }
 
+    /// <summary>
+    /// Chance a platform is a conveyor, 0–1. Also never the first landing; a
+    /// belt that reaches out past a landing should be chosen, not suffered.
+    /// </summary>
+    public float ConveyorChance { get; init; }
+
     /// <summary>Chance a platform is a bounce pad, 0–1.</summary>
     public float BounceChance { get; init; }
 
@@ -84,6 +90,7 @@ public sealed class SectionSpec
         HazardChance = 0f,
         CrumbleChance = 0f,
         IceChance = 0f,
+        ConveyorChance = 0f,
         BounceChance = 0f,
         MoverChance = 0f,
         TurnChance = 0.15f,
@@ -95,6 +102,6 @@ public sealed class SectionSpec
     public override string ToString() =>
         $"d={Difficulty:F2} n={PlatformCount} gap={GapMin:F1}-{GapMax:F1} " +
         $"rise={RiseMin:F1}-{RiseMax:F1} size={PlatformSize:F1} " +
-        $"haz={HazardChance:F2} cru={CrumbleChance:F2} ice={IceChance:F2} bou={BounceChance:F2} mov={MoverChance:F2} " +
+        $"haz={HazardChance:F2} cru={CrumbleChance:F2} ice={IceChance:F2} belt={ConveyorChance:F2} bou={BounceChance:F2} mov={MoverChance:F2} " +
         $"shards={ShardCount}@{ShardRisk:F2}";
 }

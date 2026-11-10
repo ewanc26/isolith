@@ -36,6 +36,7 @@ public sealed class GeneratedSection
     public required int BounceCount { get; init; }
     public required int CrumbleCount { get; init; }
     public required int IceCount { get; init; }
+    public required int ConveyorCount { get; init; }
     public required int ShardCount { get; init; }
 
     /// <summary>Every jump in the section, in order.</summary>
@@ -85,7 +86,7 @@ public sealed class SectionGenerator
         Vector3 direction = entry.Direction;
         float previousHalf = entry.HalfExtent;
 
-        int moverCount = 0, bounceCount = 0, crumbleCount = 0, iceCount = 0;
+        int moverCount = 0, bounceCount = 0, crumbleCount = 0, iceCount = 0, conveyorCount = 0;
         float pathLength = 0f;
         var path = new List<PathStep>();
 
@@ -154,16 +155,29 @@ public sealed class SectionGenerator
             }
             else
             {
+                // A conveyor's belt drags against the direction of travel:
+                // the gap behind it gets longer while you stand on it, so a
+                // belt is pressure the same way a mover is — chosen, and
+                // within the reach the belt itself has not eaten.
+                float[]? flow = null;
+                if (kind == BlockKind.Conveyor)
+                {
+                    float beltSpeed = rng.RandfRange(2.0f, 4.0f);
+                    flow = new[] { -direction.X * beltSpeed, -direction.Z * beltSpeed };
+                }
+
                 blocks.Add(new BlockDef
                 {
                     Position = Components(landing - Vector3.Up * (Thickness * 0.5f)),
                     Size = new[] { size, Thickness, size },
                     Kind = kind,
+                    Flow = flow,
                 });
 
                 if (kind == BlockKind.Bounce) bounceCount++;
                 if (kind == BlockKind.Crumble) crumbleCount++;
                 if (kind == BlockKind.Ice) iceCount++;
+                if (kind == BlockKind.Conveyor) conveyorCount++;
 
                 surface = landing;
                 pathLength += advance;
@@ -206,6 +220,7 @@ public sealed class SectionGenerator
             BounceCount = bounceCount,
             CrumbleCount = crumbleCount,
             IceCount = iceCount,
+            ConveyorCount = conveyorCount,
             ShardCount = shards.Count,
             Path = path,
         };
@@ -232,6 +247,9 @@ public sealed class SectionGenerator
 
         if (step > 0 && rng.Randf() < spec.IceChance)
             return BlockKind.Ice;
+
+        if (step > 0 && rng.Randf() < spec.ConveyorChance)
+            return BlockKind.Conveyor;
 
         return rng.Randf() < 0.30f ? BlockKind.Grass : BlockKind.Solid;
     }
