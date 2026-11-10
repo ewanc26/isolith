@@ -26,6 +26,18 @@ public partial class PlayerController : CharacterBody3D
     [Export] public float AirAcceleration { get; set; } = 32.0f;
     [Export] public float AirFriction { get; set; } = 6.0f;
 
+    // --- Ice surfaces ---------------------------------------------------------
+
+    /// <summary>Ground acceleration while standing on ice. Deliberately mushy.</summary>
+    [Export] public float IceAcceleration { get; set; } = 14.0f;
+
+    /// <summary>
+    /// Ground friction while standing on ice. A small fraction of the normal
+    /// value, so momentum carries and stopping takes planning rather than
+    /// happening the moment the stick is released.
+    /// </summary>
+    [Export] public float IceFriction { get; set; } = 3.0f;
+
     // --- Jumping -------------------------------------------------------------
 
     /// <summary>Apex height, in metres, of a fully held jump.</summary>
@@ -206,13 +218,35 @@ public partial class PlayerController : CharacterBody3D
         Vector2 planar = new(Velocity.X, Velocity.Z);
         Vector2 target = new(desired.X, desired.Z);
 
+        // Which surface the player is on changes how the ground responds:
+        // ice steals nearly all steering and all stopping power, which is the
+        // whole point of the block. Detected through metadata so the course
+        // builder decides what is slippery, not this controller.
         bool grounded = IsOnFloor();
+        bool onIce = grounded && StandingOn(CourseBuilder.IceMeta);
+
         float rate = target.LengthSquared() > 0.01f
-            ? (grounded ? GroundAcceleration : AirAcceleration)
-            : (grounded ? GroundFriction : AirFriction);
+            ? grounded ? (onIce ? IceAcceleration : GroundAcceleration) : AirAcceleration
+            : grounded ? (onIce ? IceFriction : GroundFriction) : AirFriction;
 
         planar = planar.MoveToward(target, rate * dt);
         Velocity = new Vector3(planar.X, Velocity.Y, planar.Y);
+    }
+
+    /// <summary>
+    /// True when a body flagged with <paramref name="meta"/> is among the
+    /// current floor contacts. Uses the previous slide's collisions, like the
+    /// bounce-pad check, because that is the freshest resolved contact data.
+    /// </summary>
+    private bool StandingOn(string meta)
+    {
+        for (int i = 0; i < GetSlideCollisionCount(); i++)
+        {
+            if (GetSlideCollision(i).GetCollider() is Node node && node.HasMeta(meta))
+                return true;
+        }
+
+        return false;
     }
 
     /// <summary>

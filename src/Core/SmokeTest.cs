@@ -60,6 +60,9 @@ public partial class SmokeTest : Node
         CheckSettings();
         CheckInput();
         CheckCourseCatalog();
+        CheckCourseParsing();
+        CheckRunStats();
+        CheckRunHistory();
 
         PackedScene? mainScene = ResourceLoader.Load<PackedScene>("res://scenes/Main.tscn");
         if (mainScene is null)
@@ -77,6 +80,8 @@ public partial class SmokeTest : Node
 
         foreach (string coursePath in CoursePaths())
             await CheckCourseAsync(game, coursePath);
+
+        await CheckIcePhysicsAsync(game);
 
         GD.Print("\n-- procedural generation");
         GenerationTests.Run(Check);
@@ -149,6 +154,255 @@ public partial class SmokeTest : Node
 
         Check($"{path}: kill plane ({killPlaneY:F1}) is below the goal",
             Course.ToVector(course.Goal).Y > killPlaneY);
+    }
+
+    /// <summary>Checks course JSON parsing errors and hash behaviour directly.</summary>
+    /// <remarks>
+    /// The course loop above only exercises files that parse. These checks pin
+    /// the error contract (bad JSON throws, it never returns half a course)
+    /// and the hash contract run records depend on: the hash is of the exact
+    /// source bytes, so a whitespace-only edit changes it.
+    /// </remarks>
+    private void CheckCourseParsing()
+    {
+        GD.Print("\n-- course parsing");
+
+        bool threw = false;
+        try
+        {
+            Course.Parse("{ not json", "<smoke>");
+        }
+        catch (InvalidOperationException)
+        {
+            threw = true;
+        }
+
+        Check("invalid JSON throws rather than returning a broken course", threw);
+
+        // Comments and trailing commas are deliberately tolerated so course
+        // files can be annotated.
+        Course tolerant = Course.Parse("""
+            {
+                "id": "smoke", // one entry
+                "blocks": [
+                    { "pos": [0, 0, 0], "size": [4, 1, 4], "kind": "Ice" },
+                ],
+            }
+            """);
+
+        Check("comments and trailing commas are tolerated",
+            tolerant.Blocks.Count == 1 && tolerant.Blocks[0].Kind == BlockKind.Ice);
+
+        Course course = Course.Parse("""{"id":"smoke"}""");
+        Check("the hash is a stable 64-char digest",
+            course.Hash.Length == 64 && course.Hash == course.Hash);
+
+        Check("a whitespace-only edit changes the hash",
+            Course.Parse("""{"id": "smoke"}""").Hash != course.Hash);
+
+        Check("the hash survives a round trip through the same source",
+            Course.Parse(course.SourceJson).Hash == course.Hash);
+    }
+
+    /// <summary>Checks the run record's formatting and ordering rules.</summary>
+    /// <remarks>
+    /// Pure data behaviour with no engine dependency, so it is the cheapest
+    /// place to pin how the leaderboard and the HUD will sort.
+    /// </remarks>
+    private void CheckRunStats()
+    {
+        GD.Print("\n-- run stats");
+
+        Check("times format as m:ss.mmm", RunStats.Format(61_234) == "1:01.234");
+        Check("negative times clamp to a plain zero", RunStats.Format(-5) == "0:00.000");
+
+        var completedFast = new RunStats { Completed = true, TimeMs = 60_000, ShardsCollected = 3 };
+        var completedSlow = new RunStats { Completed = true, TimeMs = 90_000, ShardsCollected = 3 };
+        var abandoned = new RunStats { Completed = false, TimeMs = 10_000, ShardsCollected = 9 };
+
+        Check("an unfinished run never beats a completed one",
+            RunStats.CompareForLeaderboard(completedFast, abandoned) < 0);
+
+        Check("more shards beats faster, when completion ties",
+            RunStats.CompareForLeaderboard(completedSlow, completedFast) > 0
+                && RunStats.CompareForLeaderboard(completedFast, completedSlow) < 0);
+
+        var shortButRich = new RunStats { ShardsCollected = 5 };
+        var longButPoor = new RunStats { ShardsCollected = 1 };
+        Check("unfinished runs are ranked by shards before time",
+            RunStats.CompareForLeaderboard(shortButRich, longButPoor) < 0);
+
+        Check("full clear requires every shard",
+            new RunStats { Completed = true, ShardsCollected = 3, ShardsTotal = 3 }.FullClear
+                && !new RunStats { Completed = true, ShardsCollected = 3, ShardsTotal = 4 }.FullClear
+                && !new RunStats { Completed = true, ShardsCollected = 3, ShardsTotal = 0 }.FullClear);
+    }
+
+    /// <summary>Checks the on-disk run history contract, against the real file.</summary>
+    /// <remarks>
+    /// This store is authoritative: every completed run lands here before sync
+    /// hears about it, so its failure modes matter. The player's real
+    /// <c>runs.json</c> is backed up and restored, like the settings checks.
+    /// </remarks>
+    private void CheckRunHistory()
+    {
+        GD.Print("\n-- run history");
+
+        string? backup = ReadUserData("runs.json");
+
+        try
+        {
+            DeleteUserData("runs.json");
+
+            Check("a missing history reads as empty", RunHistory.LoadAll().Count == 0);
+
+            var first = new RunStats { CourseId = "smoke", CourseHash = "h1", TimeMs = 100, Completed = true };
+            var second = new RunStats { CourseId = "smoke", CourseHash = "h1", TimeMs = 50, Completed = true };
+
+            RunHistory.Record(first);
+            RunHistory.Record(second);
+
+            List<RunStats> runs = RunHistory.LoadAll();
+            Check("recorded runs persist and come back newest first",
+                runs.Count == 2 && runs[0].TimeMs == 50);
+
+            RunStats? best = RunHistory.BestFor("smoke", "h1");
+            Check("the best run for a course version is found",
+                best is not null && best.TimeMs == 50);
+
+            Check("an edited course no longer competes with its old times",
+                RunHistory.BestFor("smoke", "h2") is null);
+
+            WriteUserData("runs.json", "{{{ definitely not json");
+            Check("a corrupt history reads as empty instead of throwing",
+                RunHistory.LoadAll().Count == 0);
+
+            // A capped write: fill past the cap with one write, then verify a
+            // further record both trims and lands on top.
+            var overflow = new List<RunStats>();
+            for (int i = 0; i < 600; i++)
+                overflow.Add(new RunStats { CourseId = "old", TimeMs = i });
+
+            WriteUserData("runs.json", System.Text.Json.JsonSerializer.Serialize(overflow));
+
+            RunHistory.Record(first);
+            List<RunStats> capped = RunHistory.LoadAll();
+
+            Check($"the history is capped at 500 entries ({capped.Count})",
+                capped.Count == 500 && capped[0].CourseId == "smoke");
+        }
+        finally
+        {
+            if (backup is null)
+                DeleteUserData("runs.json");
+            else
+                WriteUserData("runs.json", backup);
+        }
+    }
+
+    /// <summary>
+    /// Checks ice actually changes the physics, not just the material.
+    /// </summary>
+    /// <remarks>
+    /// Sets: give the player identical horizontal speed on an ice block and a
+    /// solid block, release all input, and measure how much speed survives the
+    /// same number of frames. A regression that stops reading the ice flag —
+    /// or an ice tuning that no longer slides — makes the two numbers converge
+    /// and fails here.
+    /// </remarks>
+    private async System.Threading.Tasks.Task CheckIcePhysicsAsync(GameManager game)
+    {
+        GD.Print("\n-- ice surfaces");
+
+        Course course = Course.Parse("""
+            {
+              "id": "ice_smoke",
+              "name": "Ice smoke",
+              "spawn": [900, 2, 0],
+              "blocks": [
+                { "pos": [900, -0.5, 0], "size": [20, 1, 10], "kind": "Ice" },
+                { "pos": [1000, -0.5, 0], "size": [20, 1, 10], "kind": "Solid" }
+              ]
+            }
+            """);
+
+        CourseBuilder.Built built = CourseBuilder.Build(course, game);
+
+        // Far off to the side so the synthetic pads cannot overlap, or collide
+        // with, whatever terrain the last real course happens to have built in
+        // front of and above the player.
+        float iceSpeed = await SlideSpeedAfterAsync(game, new Vector3(900, 2.0f, 0), frames: 30);
+        float solidSpeed = await SlideSpeedAfterAsync(game, new Vector3(1000, 2.0f, 0), frames: 30);
+
+        Check($"momentum survives on ice (v={iceSpeed:F2} m/s after 0.5 s of sliding)",
+            iceSpeed > 2.0f);
+        Check($"the same momentum stops on solid ground (v={solidSpeed:F2} m/s)",
+            solidSpeed < 0.5f);
+        Check("ice genuinely slides, by a wide margin", iceSpeed - solidSpeed > 1.5f);
+
+        built.Root.QueueFree();
+        // The endless check that follows calls Restart(), which respawns the
+        // player into its own world, so no restore is needed here.
+    }
+
+    /// <summary>
+    /// Drops the player onto a surface, gives them 5 m/s along X once landed,
+    /// waits <paramref name="frames"/> physics frames, and reports the
+    /// surviving horizontal speed.
+    /// </summary>
+    private async System.Threading.Tasks.Task<float> SlideSpeedAfterAsync(
+        GameManager game, Vector3 point, int frames)
+    {
+        PlayerController player = game.Player;
+        player.InputLocked = true;
+        player.Respawn(point);
+
+        // Wait for a stable floor contact. Respawn does not clear the engine's
+        // floor state, so IsOnFloor() can still read true from wherever the
+        // player just was; requiring a few consecutive grounded frames skips
+        // that stale reading.
+        int consecutive = 0;
+        for (int tries = 0; tries < 240 && consecutive < 5; tries++)
+        {
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+            consecutive = player.IsOnFloor() ? consecutive + 1 : 0;
+        }
+
+        if (consecutive < 5)
+            return float.NaN;
+
+        player.Velocity = new Vector3(5.0f, player.Velocity.Y, 0f);
+
+        for (int frame = 0; frame < frames; frame++)
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+        float speed = new Vector2(player.Velocity.X, player.Velocity.Z).Length();
+        player.InputLocked = false;
+        return speed;
+    }
+
+    /// <summary>User-data helpers so history checks can save and restore the real file.</summary>
+    private static string? ReadUserData(string fileName)
+    {
+        string path = $"user://{fileName}";
+        if (!FileAccess.FileExists(path))
+            return null;
+
+        using FileAccess file = FileAccess.Open(path, FileAccess.ModeFlags.Read);
+        return file?.GetAsText();
+    }
+
+    private static void WriteUserData(string fileName, string contents)
+    {
+        using FileAccess file = FileAccess.Open($"user://{fileName}", FileAccess.ModeFlags.Write);
+        file?.StoreString(contents);
+    }
+
+    private static void DeleteUserData(string fileName)
+    {
+        using DirAccess? dir = DirAccess.Open("user://");
+        if (dir is not null && dir.FileExists(fileName))
+            dir.Remove(fileName);
     }
 
     /// <summary>Checks the default input map covers the actions the game reads.</summary>

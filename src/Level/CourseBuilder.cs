@@ -22,6 +22,9 @@ public static class CourseBuilder
     /// <summary>Metadata key marking a body the player should bounce off.</summary>
     public const string BounceMeta = "isolith_bounce";
 
+    /// <summary>Metadata key marking a body with ice physics.</summary>
+    public const string IceMeta = "isolith_ice";
+
     /// <summary>Everything a freshly built course hands back to the game.</summary>
     public sealed record Built(
         Node3D Root,
@@ -85,12 +88,13 @@ public static class CourseBuilder
             return;
         }
 
-        // Solid, Grass, and Bounce are the only kinds meant to reach here —
-        // Hazard and Crumble return above. Anything else is a BlockKind added
-        // to the enum without a matching case here, or bad course data; either
-        // way it should be visible rather than silently rendered as plain
-        // geometry.
-        if (block.Kind is not (BlockKind.Solid or BlockKind.Grass or BlockKind.Bounce))
+        // Solid, Grass, Bounce, and Ice are the only kinds meant to reach
+        // here — Hazard and Crumble return above. Anything else is a BlockKind
+        // added to the enum without a matching case here, or bad course data;
+        // either way it should be visible rather than silently rendered as
+        // plain geometry.
+        if (block.Kind is not (BlockKind.Solid or BlockKind.Grass
+            or BlockKind.Bounce or BlockKind.Ice))
             GD.PushWarning($"Isolith: unhandled BlockKind '{block.Kind}', building it as solid geometry.");
 
         var body = new StaticBody3D
@@ -103,6 +107,9 @@ public static class CourseBuilder
 
         if (block.Kind == BlockKind.Bounce)
             body.SetMeta(BounceMeta, true);
+
+        if (block.Kind == BlockKind.Ice)
+            body.SetMeta(IceMeta, true);
 
         body.AddChild(BoxShape(size));
         body.AddChild(BoxMesh(size, Palette.ForBlock(block.Kind)));

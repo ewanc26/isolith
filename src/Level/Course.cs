@@ -21,6 +21,9 @@ public enum BlockKind
     /// <summary>Launches the player upward on landing.</summary>
     Bounce,
 
+    /// <summary>Low-friction solid: the player keeps momentum and steers poorly.</summary>
+    Ice,
+
     /// <summary>Falls away shortly after being stood on.</summary>
     Crumble,
 }

@@ -329,6 +329,10 @@ spikes, not stand on them.
 on. This keeps the controller ignorant of level semantics — adding a new
 surface behaviour shouldn't mean editing the character controller.
 
+Ice is flagged the same way (`IceMeta`), and the controller swaps its ground
+acceleration and friction for the ice values when standing on a flagged body.
+Both surface behaviours stay data decisions made here.
+
 ### `src/Level/Palette.cs`
 
 Every colour and material in the game, built in code and cached. There are no
@@ -548,6 +552,7 @@ sizes are **full extents**. A block's walkable surface is at
 | `Grass` | Cosmetic variant of `Solid` |
 | `Hazard` | `Area3D`; entering kills |
 | `Bounce` | Launches the player on landing |
+| `Ice` | Solid collision with near-zero friction; momentum carries and steering is mushy |
 | `Crumble` | Shakes, drops, and restores after ~3.9 s |
 
 **Mover:** `{ "from": […], "to": […], "size": […], "period": s, "phase": 0–1 }`
