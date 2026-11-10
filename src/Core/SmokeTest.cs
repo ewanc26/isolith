@@ -866,7 +866,8 @@ public partial class SmokeTest : Node
     /// <remarks>
     /// The original values are put back afterwards: this runs against the real
     /// <c>user://</c> directory, which on a developer's machine holds their
-    /// actual settings.
+    /// actual settings. Every range-bearing setting is captured so a failure
+    /// halfway through cannot leave them clobbered.
     /// </remarks>
     private void CheckSettings()
     {
@@ -874,6 +875,13 @@ public partial class SmokeTest : Node
 
         float zoom = Settings.CameraZoom;
         bool notes = Settings.ShowDirectorNotes;
+        float shake = Settings.CameraShake;
+        float master = Settings.MasterVolume;
+        float effects = Settings.EffectsVolume;
+        bool fullscreen = Settings.Fullscreen;
+        bool autoSync = Settings.AutoSync;
+        string syncHandle = Settings.SyncHandle;
+        string syncService = Settings.SyncService;
 
         try
         {
@@ -887,13 +895,40 @@ public partial class SmokeTest : Node
             Check($"out-of-range values are clamped, not stored ({Settings.CameraZoom:F0})",
                 Settings.CameraZoom <= 30.0f);
 
+            Settings.CameraShake = 9000.0f;
+            Check("shake is clamped to a sensible ceiling, too", Settings.CameraShake <= 1.0f);
+
+            // Reset restores every setting to its default — the same thing the
+            // settings screen's own "Reset to defaults" button does. Everything
+            // the developer had is captured above and put back in the finally.
+            Settings.CameraShake = 0f;
+            Settings.EffectsVolume = 0f;
+            Settings.Reset();
+
+            Check("reset restores the shake default", Mathf.IsEqualApprox(Settings.CameraShake, 1.0f));
+            Check("reset restores the effects volume default", Mathf.IsEqualApprox(Settings.EffectsVolume, 0.9f));
+            Check($"reset restores the zoom default ({Settings.CameraZoom:F0} m)",
+                Mathf.IsEqualApprox(Settings.CameraZoom, 17.0f));
+            Check("reset clears the sync identity but not the game", string.IsNullOrEmpty(Settings.SyncHandle));
+
             Check($"preferences are written to {Settings.FilePath}",
                 FileAccess.FileExists(Settings.FilePath));
         }
         finally
         {
+            Settings.AutoSync = autoSync;
+            Settings.SyncHandle = syncHandle;
+            Settings.SyncService = syncService;
+            Settings.MasterVolume = master;
             Settings.CameraZoom = zoom;
             Settings.ShowDirectorNotes = notes;
+            Settings.CameraShake = shake;
+            Settings.EffectsVolume = effects;
+
+            // Restored last: it pushes into the engine, and doing it first
+            // would let Apply() below run on the developer's other settings
+            // resolving in between.
+            Settings.Fullscreen = fullscreen;
         }
     }
 
@@ -910,6 +945,7 @@ public partial class SmokeTest : Node
         GD.Print("\n-- settings reach the game");
 
         float zoom = Settings.CameraZoom;
+        float shake = Settings.CameraShake;
 
         try
         {
@@ -925,12 +961,36 @@ public partial class SmokeTest : Node
             Check("a fresh session opens at the saved camera zoom",
                 camera is not null && Mathf.IsEqualApprox(camera.Size, 24.0f));
 
+            // The zoom keys clamp inside the same range the setting does.
+            if (camera is not null)
+            {
+                camera.AdjustZoom(-999f);
+                Check($"zooming in clamps at the same floor as the setting ({camera.ViewSize:F1} m)",
+                    Mathf.IsEqualApprox(camera.ViewSize, camera.MinViewSize));
+                camera.AdjustZoom(999f);
+                Check("zooming out clamps at the same ceiling as the setting",
+                    Mathf.IsEqualApprox(camera.ViewSize, camera.MaxViewSize));
+            }
+
+            // Amplitudes are requested in increasing order: shakes stack with
+            // a max, so a later, weaker shake must not inflate an earlier one.
+            Settings.CameraShake = 0f;
+            camera?.Shake(0.4f);
+            Check("zero shake preference stills the camera entirely",
+                camera is null || Mathf.IsEqualApprox(camera.ActiveShakeAmplitude, 0f));
+
+            Settings.CameraShake = 0.5f;
+            camera?.Shake(0.4f);
+            Check("a partial shake preference scales the impact, live",
+                camera is not null && Mathf.IsEqualApprox(camera.ActiveShakeAmplitude, 0.2f));
+
             RemoveChild(session);
             session.QueueFree();
         }
         finally
         {
             Settings.CameraZoom = zoom;
+            Settings.CameraShake = shake;
         }
     }
 

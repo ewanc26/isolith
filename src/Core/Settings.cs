@@ -67,6 +67,19 @@ public static class Settings
         set => Set(nameof(ShowDirectorNotes), value);
     }
 
+    /// <summary>
+    /// Camera shake intensity, 0–1. Zero still plays the game exactly the
+    /// same — it only stills the camera on landings, deaths, and dashes.
+    /// </summary>
+    public static float CameraShake
+    {
+        get => Get(nameof(CameraShake), 1.0f);
+        // Like zoom, a slider may drag this several times a second, so it
+        // skips Apply()'s re-assertion. Nothing reads it until the next
+        // shake is requested, which the setter doesn't need to hurry.
+        set => Set(nameof(CameraShake), Mathf.Clamp(value, 0f, 1f), applyToEngine: false);
+    }
+
     /// <summary>Publish every completed run to the repo when signed in.</summary>
     public static bool AutoSync
     {

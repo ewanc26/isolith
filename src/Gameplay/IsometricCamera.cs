@@ -65,14 +65,23 @@ public partial class IsometricCamera : Camera3D
     private float _shakeTime;
     private float _shakeDuration = 0.25f;
 
+    /// <summary>The amplitude of the shake currently in flight, for tests.</summary>
+    public float ActiveShakeAmplitude => _shakeAmplitude;
+
     /// <summary>
     /// Adds a short positional shake. Stacked calls take the stronger of the
     /// two rather than summing, so a death during a landing thud does not
     /// compound into a nauseating jolt.
     /// </summary>
+    /// <remarks>
+    /// The <see cref="Settings.CameraShake"/> preference scales the amplitude
+    /// here, at request time, so a live change takes effect on the next shake
+    /// without re-wiring anything. Zero stills the camera entirely — an
+    /// accessibility setting, not a gameplay one: the run is unaffected.
+    /// </remarks>
     public void Shake(float amplitude = 0.35f, float duration = 0.25f)
     {
-        _shakeAmplitude = Mathf.Max(_shakeAmplitude, amplitude);
+        _shakeAmplitude = Mathf.Max(_shakeAmplitude, amplitude * Settings.CameraShake);
         _shakeDuration = Mathf.Max(0.01f, duration);
         _shakeTime = _shakeDuration;
     }
@@ -198,7 +207,11 @@ public partial class IsometricCamera : Camera3D
         Size = ViewSize;
     }
 
-    private void AdjustZoom(float amount)
+    /// <summary>
+    /// Zooms by <paramref name="amount"/> metres of view height, clamped to the
+    /// same range the settings slider uses.
+    /// </summary>
+    public void AdjustZoom(float amount)
     {
         ViewSize = Mathf.Clamp(ViewSize + amount, MinViewSize, MaxViewSize);
 

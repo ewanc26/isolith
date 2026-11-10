@@ -117,6 +117,7 @@ INI at `user://settings.cfg` that you can open and edit by hand.
 | Effects volume | Relative to master; zero genuinely mutes rather than playing silent voices |
 | Fullscreen | |
 | Camera zoom | The same value the in-game zoom controls move, so the two never disagree |
+| Camera shake | Dials landing thuds, deaths, and bounces from full down to perfectly still — run times are unaffected either way |
 | Explain difficulty changes | Whether endless mode narrates what the director just decided |
 
 The sync panel's handle and PDS are remembered here too, once a sign-in has
@@ -280,6 +281,9 @@ src/Sync/       Optional AT Protocol sync (interop + service)
 src/UI/         Title screen, settings, HUD and sync panel
 tools/          Asset generators and CC0 asset fetcher
 ```
+
+The version lives in [`isolith.csproj`](isolith.csproj) and the release history
+in [`CHANGELOG.md`](CHANGELOG.md).
 
 All runtime code is C#. GDScript is reserved for editor-only tooling, and
 Python is repository tooling only — the game builds and runs without it, since
