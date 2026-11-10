@@ -13,9 +13,12 @@ Platforming surface vocabulary and accessibility for the feedback it produces.
 - `Conveyor` block kind: collision that drags the player along its `flow` vector
   (metres per second). Route one into ice and it keeps feeding velocity the
   player can barely fight.
-- Two new authored courses — **Frostline** and **Slipstream** — built on those
-  two surfaces, alongside the existing movers, crumble platforms, and bounce
-  pads.
+- `Vent` block kind: a rising wind column — catches a falling player, lifts
+  them while inside, and caps the rise so a bounce pad dumped straight in buys
+  nothing extra. Cross it on the belt's momentum or slide in off the ice.
+- Three new authored courses — **Frostline**, **Slipstream**, and
+  **Crosswinds** — built on those surfaces, alongside the existing movers,
+  crumble platforms, and bounce pads.
 - New setting: **camera shake** (0–1). Landing thuds, deaths, bounces, and
   dashes can be dialled back or stilled entirely without touching gameplay or
   run validity.

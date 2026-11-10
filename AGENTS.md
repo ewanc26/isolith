@@ -557,6 +557,7 @@ sizes are **full extents**. A block's walkable surface is at
 | `Bounce` | Launches the player on landing |
 | `Ice` | Solid collision with near-zero friction; momentum carries and steering is mushy |
 | `Conveyor` | Solid collision that drags the player along its `flow: [x, z]`, magnitude in m/s |
+| `Vent` | `Area3D` wind column; catches the player, lifts while inside, caps the rise |
 | `Crumble` | Shakes, drops, and restores after ~3.9 s |
 
 **Mover:** `{ "from": […], "to": […], "size": […], "period": s, "phase": 0–1 }`

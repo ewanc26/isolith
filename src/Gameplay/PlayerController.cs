@@ -77,6 +77,40 @@ public partial class PlayerController : CharacterBody3D
     /// <summary>Seconds before another dash is allowed.</summary>
     [Export] public float DashCooldown { get; set; } = 0.85f;
 
+    // --- Wind columns ---------------------------------------------------------
+
+    /// <summary>
+    /// Upward acceleration while inside a vent, applied to both falling and
+    /// rising motion: a player who falls in is caught, then lifted.
+    /// </summary>
+    [Export] public float VentLift { get; set; } = 28.0f;
+
+    /// <summary>
+    /// The fastest the vent will raise the player, in m/s — however hard the
+    /// launch was. Capping the rise is what makes hovering stable and keeps a
+    /// bounce pad dumped straight into a vent from rocketing out the top.
+    /// </summary>
+    [Export] public float VentRiseSpeed { get; set; } = 5.0f;
+
+    private int _ventCount;
+
+    /// <summary>True while the player is inside at least one wind column.</summary>
+    public bool InVent => _ventCount > 0;
+
+    /// <summary>Called by an <see cref="Updraft"/> when the player enters it.</summary>
+    public void EnterVent() => _ventCount++;
+
+    /// <summary>
+    /// Called by an <see cref="Updraft"/> when the player leaves it, or when
+    /// the vent itself is torn down mid-rebuild (see <see cref="Updraft"/>).
+    /// Guarded so an exit can never take the count negative.
+    /// </summary>
+    public void ExitVent()
+    {
+        if (_ventCount > 0)
+            _ventCount--;
+    }
+
     // --- Wiring --------------------------------------------------------------
 
     /// <summary>The camera whose yaw defines "forward". Set by the game manager.</summary>
@@ -182,6 +216,18 @@ public partial class PlayerController : CharacterBody3D
         {
             // A small downward bias keeps IsOnFloor() stable frame to frame.
             Velocity = Velocity with { Y = -2.0f };
+            return;
+        }
+
+        // Wind replaces gravity entirely while the player is inside the
+        // column: caught if falling, lifted if slow, and never raised past the
+        // vent's ceiling. Entering with a bounce's full launch speed is
+        // therefore worth nothing extra — the vent is a hover tool, not a
+        // second catapult.
+        if (InVent)
+        {
+            float lifted = Mathf.Min(Velocity.Y + VentLift * dt, VentRiseSpeed);
+            Velocity = Velocity with { Y = lifted };
             return;
         }
 

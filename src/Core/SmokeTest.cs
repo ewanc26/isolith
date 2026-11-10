@@ -84,6 +84,7 @@ public partial class SmokeTest : Node
 
         await CheckIcePhysicsAsync(game);
         await CheckConveyorPhysicsAsync(game);
+        await CheckVentPhysicsAsync(game);
         await CheckSessionAsync(game);
         await CheckMovingPlatformAsync();
         await CheckCrumblePlatformAsync(game);
@@ -132,6 +133,13 @@ public partial class SmokeTest : Node
             checkpointNodes == course.Checkpoints.Count);
 
         Check($"{path}: goal built", CountNodes<Goal>(courseRoot) == 1);
+
+        // Wind columns are built from the same BlockDef list as everything
+        // else, so a mismatch here is a builder regression rather than a
+        // level design change.
+        int ventBlocks = course.Blocks.Count(block => block.Kind == BlockKind.Vent);
+        Check($"{path}: {ventBlocks} wind columns built",
+            CountNodes<Updraft>(courseRoot) == ventBlocks);
 
         // Standing room: spawn, every checkpoint, and the goal must be
         // supported, or the course cannot actually be played through.
@@ -220,6 +228,8 @@ public partial class SmokeTest : Node
 
         Check("times format as m:ss.mmm", RunStats.Format(61_234) == "1:01.234");
         Check("negative times clamp to a plain zero", RunStats.Format(-5) == "0:00.000");
+        Check("a run reports its own time in the same format",
+            new RunStats { TimeMs = 61_234 }.TimeText == "1:01.234");
 
         var completedFast = new RunStats { Completed = true, TimeMs = 60_000, ShardsCollected = 3 };
         var completedSlow = new RunStats { Completed = true, TimeMs = 90_000, ShardsCollected = 3 };
@@ -426,6 +436,67 @@ public partial class SmokeTest : Node
 
         player.InputLocked = false;
         built.Root.QueueFree();
+    }
+
+    /// <summary>
+    /// Checks a wind column catches the player, holds them aloft, and —
+    /// crucially — lets go when the course is torn down around them.
+    /// </summary>
+    /// <remarks>
+    /// A stuck vent hold is the failure this guards against: overlap is
+    /// counted enter/exit on the player, so a course rebuild while the player
+    /// is inside a column could otherwise leave <see cref="PlayerController"/>
+    /// lifting forever.
+    /// </remarks>
+    private async System.Threading.Tasks.Task CheckVentPhysicsAsync(GameManager game)
+    {
+        GD.Print("\n-- wind columns");
+
+        Course course = Course.Parse("""
+            {
+              "id": "vent_smoke",
+              "name": "Vent smoke",
+              "spawn": [3000, 10, 0],
+              "blocks": [
+                { "pos": [3000, 5, 0], "size": [4, 12, 4], "kind": "Vent" }
+              ]
+            }
+            """);
+
+        CourseBuilder.Built built = CourseBuilder.Build(course, game);
+
+        PlayerController player = game.Player;
+        player.InputLocked = true;
+
+        // Dropped inside the column itself, so lift engages from the first
+        // physics frame and the check measures hover, not travel.
+        player.Respawn(new Vector3(3000, 10.0f, 0));
+
+        for (int frame = 0; frame < 60; frame++)
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+        float y1 = player.GlobalPosition.Y;
+
+        for (int frame = 0; frame < 60; frame++)
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+        float y2 = player.GlobalPosition.Y;
+
+        Check($"the vent catches a falling player and holds them aloft (y {y1:F1} → {y2:F1})",
+            y1 > 2.0f && y2 > 2.0f && y2 < 15.0f
+            && Mathf.Abs(y2 - y1) < 3.0f);
+
+        Check("the hold is registered on the player", player.InVent);
+
+        // A course rebuild is just a tear-down and rebuilt nodes; the freed
+        // vent must release its hold without waiting for an exit event that
+        // will now never come.
+        built.Root.QueueFree();
+        await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+        Check("a vent torn down mid-hold releases the player", !player.InVent);
+
+        player.InputLocked = false;
     }
 
     /// <summary>
@@ -752,6 +823,12 @@ public partial class SmokeTest : Node
             CourseEntry? next = CourseCatalog.Next(courses[0].Path);
             Check("next course wraps to a different course",
                 next is { } entry && entry.Path != courses[0].Path);
+
+            // A path that is not in the catalog (a deleted course, an old
+            // save) must still point somewhere playable, not into nothing.
+            CourseEntry? fallback = CourseCatalog.Next("res://courses/gone.json");
+            Check("asking for the course after a missing one gives the first",
+                fallback is { } found && found.Path == courses[0].Path);
         }
     }
 

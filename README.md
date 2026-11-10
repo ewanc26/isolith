@@ -18,9 +18,9 @@ repo — see [Stat sync](#stat-sync-optional), which is genuinely optional.
 - **Platformer feel that forgives** — coyote time, jump buffering, variable jump
   height, separate rise/fall gravity, and a directional dash that adds reach
   without ever being required.
-- **Five hand-authored courses** — The Ascent, The Abyss, Zenith, Frostline,
-  and Slipstream, chosen from the title screen, with a best time per course and
-  a "next course" flow when you finish one.
+- **Six hand-authored courses** — The Ascent, The Abyss, Zenith, Frostline,
+  Slipstream, and Crosswinds, chosen from the title screen, with a best time per
+  course and a "next course" flow when you finish one.
   from the title screen, with a best time per course and a "next course" flow
   when you finish one.
 - **Gamepad first** — the analog stick drives speed directly; keyboard is the
@@ -35,7 +35,8 @@ repo — see [Stat sync](#stat-sync-optional), which is genuinely optional.
   time. No binary scene files to merge, and every level is a readable diff.
 - **Course hazards** — moving platforms you ride, platforms that crumble under
   you, bounce pads, low-friction ice you carry momentum across, conveyors that
-  drag you whether you asked or not, spike pits, and checkpoints.
+  drag you whether you asked or not, wind columns that catch you mid-fall and
+  lift, spike pits, and checkpoints.
 - **Honest assets.** Every sound is synthesised by a script in this repository
   and every mesh is built in code; the sky and surface materials are CC0 packs,
   fetched with pinned checksums. Full provenance in [ASSETS.md](ASSETS.md).
@@ -177,9 +178,9 @@ Drop a JSON file in `courses/` and point `GameManager.CoursePath` at it.
 }
 ```
 
-`kind` is one of `Solid`, `Grass`, `Hazard`, `Bounce`, `Ice`, `Conveyor`, or
-`Crumble`. Positions are centres and sizes are full extents, so a block's
-walkable surface sits at `pos.y + size.y / 2`.
+`kind` is one of `Solid`, `Grass`, `Hazard`, `Bounce`, `Ice`, `Conveyor`,
+`Vent`, or `Crumble`. Positions are centres and sizes are full extents, so a
+block's walkable surface sits at `pos.y + size.y / 2`.
 
 `Ice` is normal collision but nearly frictionless: momentum carries, steering
 mushes out, and stopping takes planning. It multiplies with everything you can
@@ -189,6 +190,11 @@ already do — dash onto it and you slide much further than you pushed.
 world-space vector whose length is the belt speed). Route a conveyor into ice
 and the belt keeps feeding you velocity while the ice takes away the grip
 you'd fight it with.
+
+`Vent` is not collision at all: a rising wind column. Fall into it and you are
+caught; linger and you are lifted, up to a ceiling that a bounce pad's full
+launch cannot beat. Cross it on a conveyor's momentum, or slide into it off ice
+— vertical hang time is the point.
 
 A fully held jump clears about **2.4 m of height** and **5.9 m of distance**, so
 keep gaps inside that envelope. The smoke test will tell you if the spawn,

@@ -31,6 +31,14 @@ public enum BlockKind
     /// </summary>
     Conveyor,
 
+    /// <summary>
+    /// A rising wind column rather than collision: the player falls slowly
+    /// into it, is lifted while inside, and rises no faster than the vent's
+    /// ceiling — hang time enough to be read as a mechanic that moves you, not
+    /// a bug in the gravity.
+    /// </summary>
+    Vent,
+
     /// <summary>Falls away shortly after being stood on.</summary>
     Crumble,
 }

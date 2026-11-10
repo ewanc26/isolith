@@ -77,10 +77,12 @@ public static class CourseBuilder
         Vector3 size = Course.ToVector(block.Size);
 
         // Hazards are pass-through volumes rather than collision geometry: the
-        // player should fall into spikes, not stand on them.
-        if (block.Kind == BlockKind.Hazard)
+        // player should fall into spikes, not stand on them. Wind columns are
+        // the same idea one step further on — they act on the player while
+        // they are inside, so there is nothing to stand on either.
+        if (block.Kind is BlockKind.Hazard or BlockKind.Vent)
         {
-            AddHazard(root, position, size);
+            AddVolume(root, block.Kind, position, size);
             return;
         }
 
@@ -135,20 +137,20 @@ public static class CourseBuilder
         root.AddChild(body);
     }
 
-    private static void AddHazard(Node3D root, Vector3 position, Vector3 size)
+    private static void AddVolume(Node3D root, BlockKind kind, Vector3 position, Vector3 size)
     {
-        var area = new Hazard
-        {
-            Name = "Hazard",
-            Position = position,
-            CollisionLayer = Mask(Layers.Trigger),
-            CollisionMask = Mask(Layers.Player),
-            Monitoring = true,
-        };
+        Area3D volume = kind == BlockKind.Vent
+            ? new Updraft()
+            : new Hazard { Name = "Hazard" };
 
-        area.AddChild(BoxShape(size));
-        area.AddChild(BoxMesh(size, Palette.Spike));
-        root.AddChild(area);
+        volume.Position = position;
+        volume.CollisionLayer = Mask(Layers.Trigger);
+        volume.CollisionMask = Mask(Layers.Player);
+        volume.Monitoring = true;
+
+        volume.AddChild(BoxShape(size));
+        volume.AddChild(BoxMesh(size, kind == BlockKind.Vent ? Palette.Updraft : Palette.Spike));
+        root.AddChild(volume);
     }
 
     private static void AddMover(Node3D root, MoverDef mover)
