@@ -21,6 +21,33 @@ public enum BlockKind
     /// <summary>Launches the player upward on landing.</summary>
     Bounce,
 
+    /// <summary>Low-friction solid: the player keeps momentum and steers poorly.</summary>
+    Ice,
+
+    /// <summary>
+    /// Solid surface with a belt flow: standing on it drags the player along
+    /// <see cref="BlockDef.Flow"/>. The counterpart to ice — ice takes steering
+    /// away, a conveyor adds velocity you did not ask for.
+    /// </summary>
+    Conveyor,
+
+    /// <summary>
+    /// A rising wind column rather than collision: the player falls slowly
+    /// into it, is lifted while inside, and rises no faster than the vent's
+    /// ceiling — hang time enough to be read as a mechanic that moves you, not
+    /// a bug in the gravity.
+    /// </summary>
+    Vent,
+
+    /// <summary>
+    /// A horizontal wind wall rather than collision: while inside, the player
+    /// is dragged toward the <see cref="BlockDef.Flow"/> frame up to the wind's
+    /// own speed — slower than the wind and it decides where you go, faster
+    /// (a dash, a belt) and it touches nothing. The vent's sibling: one moves
+    /// you up, the other moves you along.
+    /// </summary>
+    Gust,
+
     /// <summary>Falls away shortly after being stood on.</summary>
     Crumble,
 }
@@ -30,6 +57,14 @@ public sealed class BlockDef
 {
     [JsonPropertyName("pos")] public float[] Position { get; init; } = { 0, 0, 0 };
     [JsonPropertyName("size")] public float[] Size { get; init; } = { 4, 1, 4 };
+
+    /// <summary>
+    /// Flow for a <see cref="BlockKind.Conveyor"/> or <see cref="BlockKind.Gust"/>
+    /// block: a conveyor drags the player along it while stood on, and a gust
+    /// pushes toward it while inside — [x, z] in the world frame, whose
+    /// magnitude is the speed in m/s. Ignored by the other kinds.
+    /// </summary>
+    [JsonPropertyName("flow")] public float[]? Flow { get; init; }
 
     [JsonPropertyName("kind")]
     [JsonConverter(typeof(JsonStringEnumConverter))]

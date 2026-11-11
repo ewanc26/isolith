@@ -49,6 +49,12 @@ public sealed class SectionPerformance
     public int CrumblesPresent { get; set; }
     public int CrumbleDeaths { get; set; }
 
+    public int IcePresent { get; set; }
+    public int IceDeaths { get; set; }
+
+    public int ConveyorsPresent { get; set; }
+    public int ConveyorDeaths { get; set; }
+
     // --- Derived signals -----------------------------------------------------
 
     /// <summary>How much slower than expected the section was. 1.0 is on pace.</summary>

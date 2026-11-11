@@ -18,7 +18,9 @@ repo — see [Stat sync](#stat-sync-optional), which is genuinely optional.
 - **Platformer feel that forgives** — coyote time, jump buffering, variable jump
   height, separate rise/fall gravity, and a directional dash that adds reach
   without ever being required.
-- **Three hand-authored courses** — The Ascent, The Abyss, and Zenith, chosen
+- **Seven hand-authored courses** — The Ascent, The Abyss, Zenith, Frostline,
+  Slipstream, Crosswinds, and Windfall, chosen from the title screen, with a best time per
+  course and a "next course" flow when you finish one.
   from the title screen, with a best time per course and a "next course" flow
   when you finish one.
 - **Gamepad first** — the analog stick drives speed directly; keyboard is the
@@ -32,7 +34,9 @@ repo — see [Stat sync](#stat-sync-optional), which is genuinely optional.
 - **Levels as data** — authored courses are JSON, built into geometry at load
   time. No binary scene files to merge, and every level is a readable diff.
 - **Course hazards** — moving platforms you ride, platforms that crumble under
-  you, bounce pads, spike pits, and checkpoints.
+  you, bounce pads, low-friction ice you carry momentum across, conveyors that
+  drag you whether you asked or not, wind columns that catch you mid-fall and
+  lift, spike pits, and checkpoints.
 - **Honest assets.** Every sound is synthesised by a script in this repository
   and every mesh is built in code; the sky and surface materials are CC0 packs,
   fetched with pinned checksums. Full provenance in [ASSETS.md](ASSETS.md).
@@ -114,6 +118,7 @@ INI at `user://settings.cfg` that you can open and edit by hand.
 | Effects volume | Relative to master; zero genuinely mutes rather than playing silent voices |
 | Fullscreen | |
 | Camera zoom | The same value the in-game zoom controls move, so the two never disagree |
+| Camera shake | Dials landing thuds, deaths, and bounces from full down to perfectly still — run times are unaffected either way |
 | Explain difficulty changes | Whether endless mode narrates what the director just decided |
 
 The sync panel's handle and PDS are remembered here too, once a sign-in has
@@ -173,9 +178,29 @@ Drop a JSON file in `courses/` and point `GameManager.CoursePath` at it.
 }
 ```
 
-`kind` is one of `Solid`, `Grass`, `Hazard`, `Bounce`, or `Crumble`. Positions
-are centres and sizes are full extents, so a block's walkable surface sits at
-`pos.y + size.y / 2`.
+`kind` is one of `Solid`, `Grass`, `Hazard`, `Bounce`, `Ice`, `Conveyor`,
+`Vent`, `Gust`, or `Crumble`. Positions are centres and sizes are full extents, so a
+block's walkable surface sits at `pos.y + size.y / 2`.
+
+`Ice` is normal collision but nearly frictionless: momentum carries, steering
+mushes out, and stopping takes planning. It multiplies with everything you can
+already do — dash onto it and you slide much further than you pushed.
+
+`Conveyor` is normal collision that drags you along `"flow": [x, z]` (a
+world-space vector whose length is the belt speed). Route a conveyor into ice
+and the belt keeps feeding you velocity while the ice takes away the grip
+you'd fight it with.
+
+`Vent` is not collision at all: a rising wind column. Fall into it and you are
+caught; linger and you are lifted, up to a ceiling that a bounce pad's full
+launch cannot beat. Cross it on a conveyor's momentum, or slide into it off ice
+— vertical hang time is the point.
+
+`Gust` is the vent's sibling, sideways: a wind wall that pushes you along
+`"flow": [x, z]` up to the wind's own speed. Slower than the wind and it
+decides where you go; faster — a dash, a belt — and it touches nothing. Bounce
+into one and the wind carries the arc; stand on ice inside one and there is
+almost no grip to argue with it.
 
 A fully held jump clears about **2.4 m of height** and **5.9 m of distance**, so
 keep gaps inside that envelope. The smoke test will tell you if the spawn,
@@ -195,6 +220,13 @@ It also exercises procedural generation: 3200 generated jumps across the full
 difficulty range must all be within reach, generation must be reproducible from
 its seed, and the director must ease after deaths, hold after near-misses, and
 target the specific mechanic that killed you.
+
+Outside the scene it checks the pure behaviour that fails quietly: course JSON
+that parses only leniently, hashes that change with the bytes that made them,
+run records that sort the way a player expects, the local run history's cap
+and corrupted-file recovery, a run's round trip through the sync lexicon, and
+the moving platform, crumbling platform, ice, conveyor, death, checkpoint,
+and goal behaviours a session actually performs.
 
 For the UI it checks that the title screen builds, that no control is left
 without a focus neighbour, and that a stored setting reaches the thing it
@@ -261,6 +293,9 @@ src/Sync/       Optional AT Protocol sync (interop + service)
 src/UI/         Title screen, settings, HUD and sync panel
 tools/          Asset generators and CC0 asset fetcher
 ```
+
+The version lives in [`isolith.csproj`](isolith.csproj) and the release history
+in [`CHANGELOG.md`](CHANGELOG.md).
 
 All runtime code is C#. GDScript is reserved for editor-only tooling, and
 Python is repository tooling only — the game builds and runs without it, since

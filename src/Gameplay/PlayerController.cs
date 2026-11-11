@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Godot;
 using Isolith.Core;
 using Isolith.Level;
@@ -25,6 +26,18 @@ public partial class PlayerController : CharacterBody3D
     [Export] public float GroundFriction { get; set; } = 55.0f;
     [Export] public float AirAcceleration { get; set; } = 32.0f;
     [Export] public float AirFriction { get; set; } = 6.0f;
+
+    // --- Ice surfaces ---------------------------------------------------------
+
+    /// <summary>Ground acceleration while standing on ice. Deliberately mushy.</summary>
+    [Export] public float IceAcceleration { get; set; } = 14.0f;
+
+    /// <summary>
+    /// Ground friction while standing on ice. A small fraction of the normal
+    /// value, so momentum carries and stopping takes planning rather than
+    /// happening the moment the stick is released.
+    /// </summary>
+    [Export] public float IceFriction { get; set; } = 3.0f;
 
     // --- Jumping -------------------------------------------------------------
 
@@ -64,6 +77,68 @@ public partial class PlayerController : CharacterBody3D
 
     /// <summary>Seconds before another dash is allowed.</summary>
     [Export] public float DashCooldown { get; set; } = 0.85f;
+
+    // --- Wind columns ---------------------------------------------------------
+
+    /// <summary>
+    /// Upward acceleration while inside a vent, applied to both falling and
+    /// rising motion: a player who falls in is caught, then lifted.
+    /// </summary>
+    [Export] public float VentLift { get; set; } = 28.0f;
+
+    /// <summary>
+    /// The fastest the vent will raise the player, in m/s — however hard the
+    /// launch was. Capping the rise is what makes hovering stable and keeps a
+    /// bounce pad dumped straight into a vent from rocketing out the top.
+    /// </summary>
+    [Export] public float VentRiseSpeed { get; set; } = 5.0f;
+
+    private int _ventCount;
+
+    /// <summary>True while the player is inside at least one wind column.</summary>
+    public bool InVent => _ventCount > 0;
+
+    /// <summary>Called by an <see cref="Updraft"/> when the player enters it.</summary>
+    public void EnterVent() => _ventCount++;
+
+    /// <summary>
+    /// Called by an <see cref="Updraft"/> when the player leaves it, or when
+    /// the vent itself is torn down mid-rebuild (see <see cref="Updraft"/>).
+    /// Guarded so an exit can never take the count negative.
+    /// </summary>
+    public void ExitVent()
+    {
+        if (_ventCount > 0)
+            _ventCount--;
+    }
+
+    // --- Gust wind ------------------------------------------------------------
+
+    /// <summary>
+    /// How quickly the wind's planar drag takes hold, in m/s per second. It
+    /// has to beat ground friction (55) or a standing player would never be
+    /// swept at all; on ice (friction 3) the wind barely even has to argue.
+    /// </summary>
+    [Export] public float GustAcceleration { get; set; } = 75.0f;
+
+    private readonly List<GustField> _gusts = new();
+
+    /// <summary>True while the player is inside at least one gust.</summary>
+    public bool InGust => _gusts.Count > 0;
+
+    /// <summary>Called by a <see cref="GustField"/> when the player enters it.</summary>
+    public void EnterGust(GustField field)
+    {
+        if (!_gusts.Contains(field))
+            _gusts.Add(field);
+    }
+
+    /// <summary>
+    /// Called by a <see cref="GustField"/> when the player leaves it, or when
+    /// the field is torn down mid-rebuild (see <see cref="GustField"/>).
+    /// Removing the field itself, not a count, keeps overlapping gusts honest.
+    /// </summary>
+    public void ExitGust(GustField field) => _gusts.Remove(field);
 
     // --- Wiring --------------------------------------------------------------
 
@@ -173,6 +248,18 @@ public partial class PlayerController : CharacterBody3D
             return;
         }
 
+        // Wind replaces gravity entirely while the player is inside the
+        // column: caught if falling, lifted if slow, and never raised past the
+        // vent's ceiling. Entering with a bounce's full launch speed is
+        // therefore worth nothing extra — the vent is a hover tool, not a
+        // second catapult.
+        if (InVent)
+        {
+            float lifted = Mathf.Min(Velocity.Y + VentLift * dt, VentRiseSpeed);
+            Velocity = Velocity with { Y = lifted };
+            return;
+        }
+
         float risingVelocity = Velocity.Y;
 
         // Releasing jump mid-rise cuts the arc short — the difference between a
@@ -206,13 +293,79 @@ public partial class PlayerController : CharacterBody3D
         Vector2 planar = new(Velocity.X, Velocity.Z);
         Vector2 target = new(desired.X, desired.Z);
 
+        // Which surface the player is on changes how the ground responds:
+        // ice steals nearly all steering and all stopping power, which is the
+        // whole point of the block. Detected through metadata so the course
+        // builder decides what is slippery, not this controller.
         bool grounded = IsOnFloor();
+        bool onIce = grounded && StandingOn(CourseBuilder.IceMeta);
+        Vector3 flow = grounded ? ConveyorOnFloor() : Vector3.Zero;
+
+        // The express design goal of a conveyor is how far it reaches: riding
+        // one onto ice means the belt keeps feeding velocity in while the ice
+        // takes away the grip needed to fight it.
+        if (grounded)
+            target += new Vector2(flow.X, flow.Z);
+
         float rate = target.LengthSquared() > 0.01f
-            ? (grounded ? GroundAcceleration : AirAcceleration)
-            : (grounded ? GroundFriction : AirFriction);
+            ? grounded ? (onIce ? IceAcceleration : GroundAcceleration) : AirAcceleration
+            : grounded ? (onIce ? IceFriction : GroundFriction) : AirFriction;
 
         planar = planar.MoveToward(target, rate * dt);
+
+        // Gust, the wind-frame rule: the flow is a speed the wind is willing
+        // to bring the player to, not a force added to whatever they have.
+        // A dash or a belt-ride carrying more speed than the wind is left
+        // entirely alone, so the stack only composes in one direction — and
+        // below that speed the wind decides where the slow go.
+        if (_gusts.Count > 0)
+        {
+            // Overlapping gusts are a content choice; the first entered wins,
+            // which keeps the push deterministic frame to frame.
+            Vector3 wind = _gusts[0].Flow;
+            var blowing = new Vector2(wind.X, wind.Z);
+            if (planar.LengthSquared() < blowing.LengthSquared())
+                planar = planar.MoveToward(blowing, GustAcceleration * dt);
+        }
+
         Velocity = new Vector3(planar.X, Velocity.Y, planar.Y);
+    }
+
+    /// <summary>
+    /// The belt flow of any conveyor under the player's feet, or zero.
+    /// </summary>
+    /// <remarks>
+    /// Multiple conveyors overlapping are a content choice; the first found
+    /// wins, which keeps the result deterministic frame to frame.
+    /// </remarks>
+    private Vector3 ConveyorOnFloor()
+    {
+        for (int i = 0; i < GetSlideCollisionCount(); i++)
+        {
+            if (GetSlideCollision(i).GetCollider() is Node node
+                && node.HasMeta(CourseBuilder.ConveyorMeta))
+            {
+                return node.GetMeta(CourseBuilder.ConveyorMeta).AsVector3();
+            }
+        }
+
+        return Vector3.Zero;
+    }
+
+    /// <summary>
+    /// True when a body flagged with <paramref name="meta"/> is among the
+    /// current floor contacts. Uses the previous slide's collisions, like the
+    /// bounce-pad check, because that is the freshest resolved contact data.
+    /// </summary>
+    private bool StandingOn(string meta)
+    {
+        for (int i = 0; i < GetSlideCollisionCount(); i++)
+        {
+            if (GetSlideCollision(i).GetCollider() is Node node && node.HasMeta(meta))
+                return true;
+        }
+
+        return false;
     }
 
     /// <summary>

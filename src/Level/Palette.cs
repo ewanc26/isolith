@@ -31,6 +31,9 @@ public static class Palette
     public static readonly Color Hazard = Color.FromHtml("#d4576b");
     public static readonly Color Bounce = Color.FromHtml("#4fc3d9");
     public static readonly Color Crumble = Color.FromHtml("#c39a5c");
+    public static readonly Color Ice = Color.FromHtml("#bfe3f0");
+    public static readonly Color Flow = Color.FromHtml("#8ed14f");
+    public static readonly Color Gale = Color.FromHtml("#9fd7e8");
     public static readonly Color Shard = Color.FromHtml("#ffd479");
     public static readonly Color Goal = Color.FromHtml("#9d7cf5");
     public static readonly Color Checkpoint = Color.FromHtml("#57d49a");
@@ -53,6 +56,9 @@ public static class Palette
     private static StandardMaterial3D? _hazard;
     private static StandardMaterial3D? _bounce;
     private static StandardMaterial3D? _crumble;
+    private static StandardMaterial3D? _ice;
+    private static StandardMaterial3D? _belt;
+    private static StandardMaterial3D? _gale;
     private static StandardMaterial3D? _shard;
     private static StandardMaterial3D? _goal;
     private static StandardMaterial3D? _checkpointOff;
@@ -70,6 +76,27 @@ public static class Palette
 
     public static StandardMaterial3D Fragile =>
         _crumble ??= Textured("Concrete034", Crumble, roughness: 0.7f);
+
+    /// <summary>
+    /// Ice is a behaviour change rather than a colour one — its hazard is that
+    /// the player cannot stop. A near-mirror finish telegraphs "slick" from
+    /// the fixed isometric distance, and no photographic texture would help it.
+    /// </summary>
+    public static StandardMaterial3D Slick => _ice ??= Surface(Ice, roughness: 0.12f);
+
+    /// <summary>
+    /// A conveyor is a gameplay signal like a bounce pad: the player has to
+    /// spot where it is dragging them before they are on it, so it stays flat
+    /// and legible rather than textured.
+    /// </summary>
+    public static StandardMaterial3D Belt => _belt ??= Emissive(Flow, energy: 0.35f);
+
+    /// <summary>
+    /// Wind is the one element that is allowed to look like nothing much: near
+    /// transparent, softly glowing upward, so it reads as air rather than a
+    /// solid you could stand on.
+    /// </summary>
+    public static StandardMaterial3D Updraft => _gale ??= Emissive(Gale, energy: 0.25f);
 
     // --- Gameplay signals: always flat and emissive ---------------------------
 
@@ -89,6 +116,8 @@ public static class Palette
         BlockKind.Hazard => Spike,
         BlockKind.Bounce => Springboard,
         BlockKind.Crumble => Fragile,
+        BlockKind.Ice => Slick,
+        BlockKind.Conveyor => Belt,
         _ => Solid,
     };
 

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 using Isolith.Level;
 using Isolith.Level.Generation;
@@ -31,6 +32,8 @@ public static class GenerationTests
         DirectorEasesAfterDeaths(envelope, check);
         DirectorRaisesAfterCleanRuns(envelope, check);
         DirectorTargetsTheGuiltyMechanic(envelope, check);
+        IceSpendsItsChanceAndItsTrustFollowsItsDeaths(envelope, check);
+        ConveyorsDragAgainstThePathAndTheirTrustFollowsTheirDeaths(envelope, check);
         DirectorStaysInBounds(envelope, check);
         DirectorHoldsOnEdgeLandings(envelope, check);
     }
@@ -230,6 +233,113 @@ public static class GenerationTests
             next.MoverChance < 0.12f);
     }
 
+    private static void IceSpendsItsChanceAndItsTrustFollowsItsDeaths(JumpEnvelope envelope, Action<string, bool> check)
+    {
+        // The generator: a full ice chance turns every platform after the
+        // section's first into ice, and reports them.
+        var generator = new SectionGenerator(envelope);
+        var spec = new SectionSpec { PlatformCount = 6, IceChance = 1.0f, Seed = 41 };
+        var entry = new SectionAnchor(Vector3.Zero, Vector3.Forward, 4.0f);
+        GeneratedSection section = generator.Generate(0, spec, entry);
+
+        check($"a full ice chance ices every platform after the first ({section.IceCount} of {spec.PlatformCount})",
+            section.IceCount == spec.PlatformCount - 1
+            && section.Course.Blocks.Count(b => b.Kind == BlockKind.Ice) == spec.PlatformCount - 1);
+
+        // The section is arrived at mid-run: the landing needing its brakes would
+        // be a read the approach did not give, so the entry pad stays plain.
+        check("the entry platform is never the ice", section.Course.Blocks[0].Kind != BlockKind.Ice);
+
+        // The same spec and seed ices the same platforms, like everything else.
+        GeneratedSection again = generator.Generate(0, spec, entry);
+        check("ice placement is deterministic for a spec",
+            section.Course.Hash == again.Course.Hash && section.IceCount == again.IceCount);
+
+        // The director: a death on ice is the ice's evidence, and only the ice's.
+        var director = new AdaptiveDirector(envelope, seed: 6);
+        director.Next(null);
+        for (int i = 0; i < 6; i++)
+        {
+            SectionPerformance cruised = Cruised(i, crumbles: 2);
+            cruised.IcePresent = 2;
+            director.Next(cruised);
+        }
+
+        float iceBefore = director.IceTrust;
+        float crumbleBefore = director.CrumbleTrust;
+
+        SectionPerformance sample = Died(7, deaths: 1);
+        sample.IcePresent = 2;
+        sample.IceDeaths = 1;
+        sample.CrumblesPresent = 2;
+        sample.CrumbleDeaths = 0;
+
+        SectionSpec next = director.Next(sample);
+
+        check($"ice deaths cut ice trust ({iceBefore:F2} → {director.IceTrust:F2})",
+            director.IceTrust < iceBefore * 0.6f);
+        check($"crumble trust is untouched by an ice death ({crumbleBefore:F2} → {director.CrumbleTrust:F2})",
+            director.CrumbleTrust >= crumbleBefore);
+        check($"the next section backs off ice (chance {next.IceChance:F3})",
+            next.IceChance < 0.12f);
+    }
+
+    private static void ConveyorsDragAgainstThePathAndTheirTrustFollowsTheirDeaths(JumpEnvelope envelope, Action<string, bool> check)
+    {
+        // The generator: a full belt chance turns every platform after the first
+        // into a conveyor that drags against the direction of travel, and
+        // every one of them carries the flow that makes it one.
+        var generator = new SectionGenerator(envelope);
+        var spec = new SectionSpec { PlatformCount = 6, ConveyorChance = 1.0f, Seed = 77 };
+        var entry = new SectionAnchor(Vector3.Zero, Vector3.Forward, 4.0f);
+        GeneratedSection section = generator.Generate(0, spec, entry);
+
+        check($"a full belt chance turns every platform after the first into one ({section.ConveyorCount} of {spec.PlatformCount})",
+            section.ConveyorCount == spec.PlatformCount - 1
+            && section.Course.Blocks.Count(b => b.Kind == BlockKind.Conveyor) == spec.PlatformCount - 1);
+
+        var belts = section.Course.Blocks.Where(b => b.Kind == BlockKind.Conveyor).ToList();
+        check("every generated belt carries its flow",
+            belts.Count > 0 && belts.All(b => b.Flow is { Length: 2 }
+                && Math.Sqrt(b.Flow[0] * b.Flow[0] + b.Flow[1] * b.Flow[1]) is >= 2.0 and <= 4.0));
+        check("the entry platform is never a belt",
+            section.Course.Blocks[0].Kind != BlockKind.Conveyor);
+
+        // Deterministic like everything else the generator does.
+        GeneratedSection again = generator.Generate(0, spec, entry);
+        check("belt placement is deterministic for a spec",
+            section.Course.Hash == again.Course.Hash && section.ConveyorCount == again.ConveyorCount);
+
+        // The director: a death on a belt cuts belt trust and nothing else's.
+        var director = new AdaptiveDirector(envelope, seed: 8);
+        director.Next(null);
+        for (int i = 0; i < 6; i++)
+        {
+            SectionPerformance cruised = Cruised(i, crumbles: 2);
+            cruised.IcePresent = 2;
+            cruised.ConveyorsPresent = 2;
+            director.Next(cruised);
+        }
+
+        float beltBefore = director.ConveyorTrust;
+        float iceBefore = director.IceTrust;
+
+        SectionPerformance sample = Died(7, deaths: 1);
+        sample.ConveyorsPresent = 2;
+        sample.ConveyorDeaths = 1;
+        sample.IcePresent = 2;
+        sample.IceDeaths = 0;
+
+        SectionSpec next = director.Next(sample);
+
+        check($"belt deaths cut belt trust ({beltBefore:F2} → {director.ConveyorTrust:F2})",
+            director.ConveyorTrust < beltBefore * 0.6f);
+        check($"ice trust is untouched by a belt death ({iceBefore:F2} → {director.IceTrust:F2})",
+            director.IceTrust >= iceBefore);
+        check($"the next section backs off belts (chance {next.ConveyorChance:F3})",
+            next.ConveyorChance < 0.12f);
+    }
+
     private static void DirectorHoldsOnEdgeLandings(JumpEnvelope envelope, Action<string, bool> check)
     {
         var director = new AdaptiveDirector(envelope, seed: 4);
@@ -278,6 +388,10 @@ public static class GenerationTests
                 MoverDeaths = rng.RandiRange(0, 3),
                 CrumblesPresent = rng.RandiRange(0, 3),
                 CrumbleDeaths = rng.RandiRange(0, 3),
+                IcePresent = rng.RandiRange(0, 3),
+                IceDeaths = rng.RandiRange(0, 3),
+                ConveyorsPresent = rng.RandiRange(0, 3),
+                ConveyorDeaths = rng.RandiRange(0, 3),
                 BouncePadsPresent = rng.RandiRange(0, 3),
                 BouncePadsUsed = rng.RandiRange(0, 3),
             };
@@ -290,7 +404,7 @@ public static class GenerationTests
             if (spec.GapMax > envelope.SafeGap + 0.001f || spec.PlatformCount < 1)
                 inRange = false;
 
-            if (spec.MoverChance is < 0f or > 1f || spec.HazardChance is < 0f or > 1f)
+            if (spec.MoverChance is < 0f or > 1f || spec.HazardChance is < 0f or > 1f || spec.IceChance is < 0f or > 1f || spec.ConveyorChance is < 0f or > 1f)
                 inRange = false;
         }
 

@@ -43,6 +43,8 @@ public sealed class AdaptiveDirector
     private float _difficulty = StartingDifficulty;
     private float _moverTrust = StartingTrust;
     private float _crumbleTrust = StartingTrust;
+    private float _iceTrust = StartingTrust;
+    private float _conveyorTrust = StartingTrust;
     private float _bounceTrust = StartingTrust;
     private float _shardRisk = 0.1f;
     private int _sectionsGenerated;
@@ -59,6 +61,8 @@ public sealed class AdaptiveDirector
     /// <summary>Per-mechanic trust, for display and tests.</summary>
     public float MoverTrust => _moverTrust;
     public float CrumbleTrust => _crumbleTrust;
+    public float IceTrust => _iceTrust;
+    public float ConveyorTrust => _conveyorTrust;
     public float BounceTrust => _bounceTrust;
 
     /// <summary>Every performance sample fed in so far, oldest first.</summary>
@@ -153,6 +157,34 @@ public sealed class AdaptiveDirector
             _crumbleTrust = Grow(_crumbleTrust, 0.04f);
         }
 
+        // Ice punishes in its own way — the sliding death lands on the floor
+        // the player last stood on — so it earns its own trust, exactly like
+        // the crumble it sits beside.
+        if (previous.IcePresent > 0)
+        {
+            _iceTrust = previous.IceDeaths > 0
+                ? _iceTrust * 0.45f
+                : Grow(_iceTrust, 0.14f);
+        }
+        else
+        {
+            _iceTrust = Grow(_iceTrust, 0.04f);
+        }
+
+        // The belt reaches further than the ice does: while the slide steals the
+        // brakes, a conveyor drags the player off the platform's back edge, so
+        // its trust heals more cautiously.
+        if (previous.ConveyorsPresent > 0)
+        {
+            _conveyorTrust = previous.ConveyorDeaths > 0
+                ? _conveyorTrust * 0.40f
+                : Grow(_conveyorTrust, 0.14f);
+        }
+        else
+        {
+            _conveyorTrust = Grow(_conveyorTrust, 0.04f);
+        }
+
         // Bounce pads are measured by use, not death: a player who walks past
         // them has not understood them, which is its own kind of failure.
         if (previous.BouncePadsPresent > 0)
@@ -223,6 +255,8 @@ public sealed class AdaptiveDirector
             // player keeps dying to.
             MoverChance = 0.35f * _moverTrust * Mathf.Clamp(d * 1.6f, 0f, 1f),
             CrumbleChance = 0.30f * _crumbleTrust * Mathf.Clamp(d * 1.4f, 0f, 1f),
+            IceChance = 0.26f * _iceTrust * Mathf.Clamp(d * 1.3f, 0f, 1f),
+            ConveyorChance = 0.24f * _conveyorTrust * Mathf.Clamp(d * 1.2f, 0f, 1f),
             BounceChance = 0.28f * _bounceTrust,
 
             TurnChance = Mathf.Lerp(0.15f, 0.38f, d),
@@ -237,5 +271,5 @@ public sealed class AdaptiveDirector
     /// <summary>A short description of the director's state, for the HUD.</summary>
     public string Describe() =>
         $"difficulty {_difficulty:F2}  ·  movers {_moverTrust:F2}  ·  " +
-        $"crumble {_crumbleTrust:F2}  ·  bounce {_bounceTrust:F2}";
+        $"crumble {_crumbleTrust:F2}  ·  ice {_iceTrust:F2}  ·  belt {_conveyorTrust:F2}  ·  bounce {_bounceTrust:F2}";
 }

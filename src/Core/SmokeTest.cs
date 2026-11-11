@@ -60,6 +60,10 @@ public partial class SmokeTest : Node
         CheckSettings();
         CheckInput();
         CheckCourseCatalog();
+        CheckCourseParsing();
+        CheckRunStats();
+        CheckRunHistory();
+        CheckRunRecord();
 
         PackedScene? mainScene = ResourceLoader.Load<PackedScene>("res://scenes/Main.tscn");
         if (mainScene is null)
@@ -77,6 +81,14 @@ public partial class SmokeTest : Node
 
         foreach (string coursePath in CoursePaths())
             await CheckCourseAsync(game, coursePath);
+
+        await CheckIcePhysicsAsync(game);
+        await CheckConveyorPhysicsAsync(game);
+        await CheckVentPhysicsAsync(game);
+        await CheckGustPhysicsAsync(game);
+        await CheckSessionAsync(game);
+        await CheckMovingPlatformAsync();
+        await CheckCrumblePlatformAsync(game);
 
         GD.Print("\n-- procedural generation");
         GenerationTests.Run(Check);
@@ -123,6 +135,19 @@ public partial class SmokeTest : Node
 
         Check($"{path}: goal built", CountNodes<Goal>(courseRoot) == 1);
 
+        // Wind columns are built from the same BlockDef list as everything
+        // else, so a mismatch here is a builder regression rather than a
+        // level design change.
+        int ventBlocks = course.Blocks.Count(block => block.Kind == BlockKind.Vent);
+        Check($"{path}: {ventBlocks} wind columns built",
+            CountNodes<Updraft>(courseRoot) == ventBlocks);
+
+        // Gust walls likewise: one GustField per Gust block, or the builder
+        // has stopped matching the data.
+        int gustBlocks = course.Blocks.Count(block => block.Kind == BlockKind.Gust);
+        Check($"{path}: {gustBlocks} gust walls built",
+            CountNodes<GustField>(courseRoot) == gustBlocks);
+
         // Standing room: spawn, every checkpoint, and the goal must be
         // supported, or the course cannot actually be played through.
         Vector3 clearance = new(0, StandableDropClearance, 0);
@@ -149,6 +174,677 @@ public partial class SmokeTest : Node
 
         Check($"{path}: kill plane ({killPlaneY:F1}) is below the goal",
             Course.ToVector(course.Goal).Y > killPlaneY);
+    }
+
+    /// <summary>Checks course JSON parsing errors and hash behaviour directly.</summary>
+    /// <remarks>
+    /// The course loop above only exercises files that parse. These checks pin
+    /// the error contract (bad JSON throws, it never returns half a course)
+    /// and the hash contract run records depend on: the hash is of the exact
+    /// source bytes, so a whitespace-only edit changes it.
+    /// </remarks>
+    private void CheckCourseParsing()
+    {
+        GD.Print("\n-- course parsing");
+
+        bool threw = false;
+        try
+        {
+            Course.Parse("{ not json", "<smoke>");
+        }
+        catch (InvalidOperationException)
+        {
+            threw = true;
+        }
+
+        Check("invalid JSON throws rather than returning a broken course", threw);
+
+        // Comments and trailing commas are deliberately tolerated so course
+        // files can be annotated.
+        Course tolerant = Course.Parse("""
+            {
+                "id": "smoke", // one entry
+                "blocks": [
+                    { "pos": [0, 0, 0], "size": [4, 1, 4], "kind": "Ice" },
+                ],
+            }
+            """);
+
+        Check("comments and trailing commas are tolerated",
+            tolerant.Blocks.Count == 1 && tolerant.Blocks[0].Kind == BlockKind.Ice);
+
+        Course course = Course.Parse("""{"id":"smoke"}""");
+        Check("the hash is a stable 64-char digest",
+            course.Hash.Length == 64 && course.Hash == course.Hash);
+
+        Check("a whitespace-only edit changes the hash",
+            Course.Parse("""{"id": "smoke"}""").Hash != course.Hash);
+
+        Check("the hash survives a round trip through the same source",
+            Course.Parse(course.SourceJson).Hash == course.Hash);
+    }
+
+    /// <summary>Checks the run record's formatting and ordering rules.</summary>
+    /// <remarks>
+    /// Pure data behaviour with no engine dependency, so it is the cheapest
+    /// place to pin how the leaderboard and the HUD will sort.
+    /// </remarks>
+    private void CheckRunStats()
+    {
+        GD.Print("\n-- run stats");
+
+        Check("times format as m:ss.mmm", RunStats.Format(61_234) == "1:01.234");
+        Check("negative times clamp to a plain zero", RunStats.Format(-5) == "0:00.000");
+        Check("a run reports its own time in the same format",
+            new RunStats { TimeMs = 61_234 }.TimeText == "1:01.234");
+
+        var completedFast = new RunStats { Completed = true, TimeMs = 60_000, ShardsCollected = 3 };
+        var completedSlow = new RunStats { Completed = true, TimeMs = 90_000, ShardsCollected = 3 };
+        var abandoned = new RunStats { Completed = false, TimeMs = 10_000, ShardsCollected = 9 };
+
+        Check("an unfinished run never beats a completed one",
+            RunStats.CompareForLeaderboard(completedFast, abandoned) < 0);
+
+        Check("more shards beats faster, when completion ties",
+            RunStats.CompareForLeaderboard(completedSlow, completedFast) > 0
+                && RunStats.CompareForLeaderboard(completedFast, completedSlow) < 0);
+
+        var shortButRich = new RunStats { ShardsCollected = 5 };
+        var longButPoor = new RunStats { ShardsCollected = 1 };
+        Check("unfinished runs are ranked by shards before time",
+            RunStats.CompareForLeaderboard(shortButRich, longButPoor) < 0);
+
+        Check("full clear requires every shard",
+            new RunStats { Completed = true, ShardsCollected = 3, ShardsTotal = 3 }.FullClear
+                && !new RunStats { Completed = true, ShardsCollected = 3, ShardsTotal = 4 }.FullClear
+                && !new RunStats { Completed = true, ShardsCollected = 3, ShardsTotal = 0 }.FullClear);
+    }
+
+    /// <summary>Checks the on-disk run history contract, against the real file.</summary>
+    /// <remarks>
+    /// This store is authoritative: every completed run lands here before sync
+    /// hears about it, so its failure modes matter. The player's real
+    /// <c>runs.json</c> is backed up and restored, like the settings checks.
+    /// </remarks>
+    private void CheckRunHistory()
+    {
+        GD.Print("\n-- run history");
+
+        string? backup = ReadUserData("runs.json");
+
+        try
+        {
+            DeleteUserData("runs.json");
+
+            Check("a missing history reads as empty", RunHistory.LoadAll().Count == 0);
+
+            var first = new RunStats { CourseId = "smoke", CourseHash = "h1", TimeMs = 100, Completed = true };
+            var second = new RunStats { CourseId = "smoke", CourseHash = "h1", TimeMs = 50, Completed = true };
+
+            RunHistory.Record(first);
+            RunHistory.Record(second);
+
+            List<RunStats> runs = RunHistory.LoadAll();
+            Check("recorded runs persist and come back newest first",
+                runs.Count == 2 && runs[0].TimeMs == 50);
+
+            RunStats? best = RunHistory.BestFor("smoke", "h1");
+            Check("the best run for a course version is found",
+                best is not null && best.TimeMs == 50);
+
+            Check("an edited course no longer competes with its old times",
+                RunHistory.BestFor("smoke", "h2") is null);
+
+            WriteUserData("runs.json", "{{{ definitely not json");
+            Check("a corrupt history reads as empty instead of throwing",
+                RunHistory.LoadAll().Count == 0);
+
+            // A capped write: fill past the cap with one write, then verify a
+            // further record both trims and lands on top.
+            var overflow = new List<RunStats>();
+            for (int i = 0; i < 600; i++)
+                overflow.Add(new RunStats { CourseId = "old", TimeMs = i });
+
+            WriteUserData("runs.json", System.Text.Json.JsonSerializer.Serialize(overflow));
+
+            RunHistory.Record(first);
+            List<RunStats> capped = RunHistory.LoadAll();
+
+            Check($"the history is capped at 500 entries ({capped.Count})",
+                capped.Count == 500 && capped[0].CourseId == "smoke");
+        }
+        finally
+        {
+            if (backup is null)
+                DeleteUserData("runs.json");
+            else
+                WriteUserData("runs.json", backup);
+        }
+    }
+
+    /// <summary>
+    /// Checks ice actually changes the physics, not just the material.
+    /// </summary>
+    /// <remarks>
+    /// Sets: give the player identical horizontal speed on an ice block and a
+    /// solid block, release all input, and measure how much speed survives the
+    /// same number of frames. A regression that stops reading the ice flag —
+    /// or an ice tuning that no longer slides — makes the two numbers converge
+    /// and fails here.
+    /// </remarks>
+    private async System.Threading.Tasks.Task CheckIcePhysicsAsync(GameManager game)
+    {
+        GD.Print("\n-- ice surfaces");
+
+        Course course = Course.Parse("""
+            {
+              "id": "ice_smoke",
+              "name": "Ice smoke",
+              "spawn": [900, 2, 0],
+              "blocks": [
+                { "pos": [900, -0.5, 0], "size": [20, 1, 10], "kind": "Ice" },
+                { "pos": [1000, -0.5, 0], "size": [20, 1, 10], "kind": "Solid" }
+              ]
+            }
+            """);
+
+        CourseBuilder.Built built = CourseBuilder.Build(course, game);
+
+        // Far off to the side so the synthetic pads cannot overlap, or collide
+        // with, whatever terrain the last real course happens to have built in
+        // front of and above the player.
+        float iceSpeed = await SlideSpeedAfterAsync(game, new Vector3(900, 2.0f, 0), frames: 30);
+        float solidSpeed = await SlideSpeedAfterAsync(game, new Vector3(1000, 2.0f, 0), frames: 30);
+
+        Check($"momentum survives on ice (v={iceSpeed:F2} m/s after 0.5 s of sliding)",
+            iceSpeed > 2.0f);
+        Check($"the same momentum stops on solid ground (v={solidSpeed:F2} m/s)",
+            solidSpeed < 0.5f);
+        Check("ice genuinely slides, by a wide margin", iceSpeed - solidSpeed > 1.5f);
+
+        built.Root.QueueFree();
+        // The endless check that follows calls Restart(), which respawns the
+        // player into its own world, so no restore is needed here.
+    }
+
+    /// <summary>
+    /// Drops the player onto a surface, gives them 5 m/s along X once landed,
+    /// waits <paramref name="frames"/> physics frames, and reports the
+    /// surviving horizontal speed.
+    /// </summary>
+    private async System.Threading.Tasks.Task<float> SlideSpeedAfterAsync(
+        GameManager game, Vector3 point, int frames)
+    {
+        PlayerController player = game.Player;
+        player.InputLocked = true;
+        player.Respawn(point);
+
+        // Wait for a stable floor contact. Respawn does not clear the engine's
+        // floor state, so IsOnFloor() can still read true from wherever the
+        // player just was; requiring a few consecutive grounded frames skips
+        // that stale reading.
+        int consecutive = 0;
+        for (int tries = 0; tries < 240 && consecutive < 5; tries++)
+        {
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+            consecutive = player.IsOnFloor() ? consecutive + 1 : 0;
+        }
+
+        if (consecutive < 5)
+            return float.NaN;
+
+        player.Velocity = new Vector3(5.0f, player.Velocity.Y, 0f);
+
+        for (int frame = 0; frame < frames; frame++)
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+        float speed = new Vector2(player.Velocity.X, player.Velocity.Z).Length();
+        player.InputLocked = false;
+        return speed;
+    }
+
+    /// <summary>
+    /// Checks a conveyor genuinely drags the player, not just recolours a block.
+    /// </summary>
+    private async System.Threading.Tasks.Task CheckConveyorPhysicsAsync(GameManager game)
+    {
+        GD.Print("\n-- conveyor surfaces");
+
+        Course course = Course.Parse("""
+            {
+              "id": "conveyor_smoke",
+              "name": "Conveyor smoke",
+              "spawn": [2000, 2, 0],
+              "blocks": [
+                { "pos": [2000, -0.5, 0], "size": [20, 1, 10], "kind": "Conveyor", "flow": [-2, 0] }
+              ]
+            }
+            """);
+
+        CourseBuilder.Built built = CourseBuilder.Build(course, game);
+
+        PlayerController player = game.Player;
+        player.InputLocked = true;
+        player.Respawn(new Vector3(2000, 2.0f, 0));
+
+        await SettleToFloorAsync(player);
+
+        float startX = player.GlobalPosition.X;
+
+        for (int frame = 0; frame < 45; frame++)
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+        float drift = startX - player.GlobalPosition.X;
+
+        Check($"a conveyor drags the player along its flow ({drift:F2} m in 0.75 s)",
+            drift is > 0.8f and < 3.0f);
+        Check("the drag is at (roughly) the configured belt speed",
+            Mathf.Abs(player.Velocity.X + 2.0f) < 0.6f);
+
+        player.InputLocked = false;
+        built.Root.QueueFree();
+    }
+
+    /// <summary>
+    /// Checks a wind column catches the player, holds them aloft, and —
+    /// crucially — lets go when the course is torn down around them.
+    /// </summary>
+    /// <remarks>
+    /// A stuck vent hold is the failure this guards against: overlap is
+    /// counted enter/exit on the player, so a course rebuild while the player
+    /// is inside a column could otherwise leave <see cref="PlayerController"/>
+    /// lifting forever.
+    /// </remarks>
+    private async System.Threading.Tasks.Task CheckVentPhysicsAsync(GameManager game)
+    {
+        GD.Print("\n-- wind columns");
+
+        Course course = Course.Parse("""
+            {
+              "id": "vent_smoke",
+              "name": "Vent smoke",
+              "spawn": [3000, 10, 0],
+              "blocks": [
+                { "pos": [3000, 5, 0], "size": [4, 12, 4], "kind": "Vent" }
+              ]
+            }
+            """);
+
+        CourseBuilder.Built built = CourseBuilder.Build(course, game);
+
+        PlayerController player = game.Player;
+        player.InputLocked = true;
+
+        // Dropped inside the column itself, so lift engages from the first
+        // physics frame and the check measures hover, not travel.
+        player.Respawn(new Vector3(3000, 10.0f, 0));
+
+        for (int frame = 0; frame < 60; frame++)
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+        float y1 = player.GlobalPosition.Y;
+
+        for (int frame = 0; frame < 60; frame++)
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+        float y2 = player.GlobalPosition.Y;
+
+        Check($"the vent catches a falling player and holds them aloft (y {y1:F1} → {y2:F1})",
+            y1 > 2.0f && y2 > 2.0f && y2 < 15.0f
+            && Mathf.Abs(y2 - y1) < 3.0f);
+
+        Check("the hold is registered on the player", player.InVent);
+
+        // A course rebuild is just a tear-down and rebuilt nodes; the freed
+        // vent must release its hold without waiting for an exit event that
+        // will now never come.
+        built.Root.QueueFree();
+        await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+        Check("a vent torn down mid-hold releases the player", !player.InVent);
+
+        player.InputLocked = false;
+    }
+
+    /// <summary>
+    /// Checks a gust wall drags a slow player to the wind's own speed — never
+    /// past it — and lets go when the course is torn down around them.
+    /// </summary>
+    private async System.Threading.Tasks.Task CheckGustPhysicsAsync(GameManager game)
+    {
+        GD.Print("\n-- gust walls");
+
+        Course course = Course.Parse("""
+            {
+              "id": "gust_smoke",
+              "name": "Gust smoke",
+              "spawn": [3000, 10, 0],
+              "blocks": [
+                { "pos": [3000, 3, 30], "size": [40, 1, 4], "kind": "Solid" },
+                { "pos": [3000, 5, 30], "size": [30, 6, 4], "kind": "Gust",
+                  "flow": [8, 0] }
+              ]
+            }
+            """);
+
+        CourseBuilder.Built built = CourseBuilder.Build(course, game);
+
+        PlayerController player = game.Player;
+        player.InputLocked = true;
+
+        // Dropping onto the runway inside the gust, so the wind frame applies
+        // from the first settled step and the check measures drag, not a
+        // fall.
+        player.Respawn(new Vector3(3000, 5.0f, 30));
+
+        // Settle onto the floor first, then measure how far the wind carried
+        // the player across a whole second of it.
+        for (int frame = 0; frame < 60; frame++)
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+        float x1 = player.GlobalPosition.X;
+
+        for (int frame = 0; frame < 60; frame++)
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+        float x2 = player.GlobalPosition.X;
+        float carried = player.Velocity.Length();
+
+        Check($"the gust carries a slow player along it (x {x1:F1} → {x2:F1} at {carried:F1} m/s)",
+            x2 - x1 > 3.0f && carried > 6.0f && carried < 8.5f);
+
+        Check("the hold is registered on the player", player.InGust);
+
+        // The gust blocks nothing: its drag should never have moved the
+        // player vertically.
+        Check("the gust has no say in the player's height",
+            player.GlobalPosition.Y is > 3.5f and < 4.8f);
+
+        // A course rebuild is just a tear-down and rebuilt nodes; the freed
+        // gust must release its hold without waiting for an exit event that
+        // will now never come.
+        built.Root.QueueFree();
+        await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+        Check("a gust torn down mid-hold releases the player", !player.InGust);
+
+        player.InputLocked = false;
+    }
+
+    /// <summary>
+    /// Waits until the player reports a stable floor contact.
+    /// </summary>
+    /// <remarks>
+    /// Respawn does not clear the engine's floor state, so IsOnFloor() can
+    /// read true from wherever the player just was; requiring a few
+    /// consecutive grounded frames skips that stale reading.
+    /// </remarks>
+    private async System.Threading.Tasks.Task SettleToFloorAsync(PlayerController player)
+    {
+        int consecutive = 0;
+
+        for (int tries = 0; tries < 240 && consecutive < 5; tries++)
+        {
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+            consecutive = player.IsOnFloor() ? consecutive + 1 : 0;
+        }
+    }
+
+    /// <summary>
+    /// Drives a whole session through its general purpose: miss a course,
+    /// die, use a checkpoint, and finish.
+    /// </summary>
+    /// <remarks>
+    /// These are the transitions the run record depends on, and none of them
+    /// are visible to the course loop above, which only ever teleports the
+    /// player onto surfaces. The real runs.json is backed up and restored:
+    /// finishing a course writes to it.
+    /// </remarks>
+    private async System.Threading.Tasks.Task CheckSessionAsync(GameManager game)
+    {
+        GD.Print("\n-- session");
+
+        string? backup = ReadUserData("runs.json");
+
+        try
+        {
+            DeleteUserData("runs.json");
+
+            game.LoadCourse("res://courses/ascent.json");
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+            Check("a course is loaded on demand", game.Course?.Id == "ascent");
+
+            // A missing or broken course is a content error, not a crash: the
+            // previous course must stay up.
+            string courseHash = game.Course!.Hash;
+            game.LoadCourse("res://courses/definitely-not-a-course.json");
+            Check("a broken course load leaves the previous course running",
+                game.Course is { Id: "ascent" } && game.Course.Hash == courseHash);
+
+            // --- Falling out of the world -------------------------------
+
+            int deaths = game.Stats.Deaths;
+            Vector3 below = new(0, game.Course.KillPlaneY - 2.0f, 0);
+            game.Player.GlobalPosition = below;
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+            Check("falling past the kill plane counts a death",
+                game.Stats.Deaths == deaths + 1);
+            Check("a death returns the player to the spawn",
+                game.Player.GlobalPosition.DistanceTo(new Vector3(0, 1.5f, 0)) < 1.0f);
+
+            // --- Checkpoints ---------------------------------------------
+
+            game.Player.GlobalPosition = new Vector3(0, 1.8f, -25);
+            for (int frame = 0; frame < 5; frame++)
+                await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+            game.Player.GlobalPosition = below;
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+            Check("a second death returns the player to the checkpoint",
+                game.Stats.Deaths == deaths + 2
+                    && game.Player.GlobalPosition.DistanceTo(new Vector3(0, 3.0f, -25)) < 1.0f);
+
+            // --- Finishing -----------------------------------------------
+
+            float goalY = Course.ToVector(game.Course.Goal).Y;
+            game.Player.GlobalPosition = new Vector3(-25, goalY, 11);
+
+            int frameCap = 240;
+            int waited = 0;
+            while (game.State != GameState.Complete && waited++ < frameCap)
+                await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+            Check("reaching the goal completes the course",
+                game.State == GameState.Complete && game.Stats.Completed);
+            Check("the run was recorded locally before anyone hears about it",
+                RunHistory.BestFor("ascent", courseHash) is not null);
+            Check("the recorded run marks the deaths on the way",
+                RunHistory.BestFor("ascent", courseHash)!.Deaths >= 2);
+        }
+        finally
+        {
+            if (backup is null)
+                DeleteUserData("runs.json");
+            else
+                WriteUserData("runs.json", backup);
+        }
+    }
+
+    /// <summary>
+    /// Checks a moving platform actually shuttles there and back on its period.
+    /// </summary>
+    private async System.Threading.Tasks.Task CheckMovingPlatformAsync()
+    {
+        GD.Print("\n-- moving platforms");
+
+        var root = new Node3D { Name = "MoverSmoke" };
+        AddChild(root);
+
+        Vector3 from = new(2000, 0, 0);
+        Vector3 to = new(2000, 0, 10);
+
+        var platform = new MovingPlatform();
+        platform.Configure(from, to, new Vector3(3, 0.6f, 3), period: 2.0f, phase: 0.0f);
+        root.AddChild(platform);
+
+        // A full there-and-back cycle takes `period` seconds; the far point is
+        // reached at half of it. The sine ease slows at both ends, so these
+        // sums are checked at exact halves rather than near misses.
+        for (int frame = 0; frame < 60; frame++)
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+        Check($"the platform reaches its far point at half period ({platform.Position.Z:F1})",
+            platform.Position.DistanceTo(to) < 0.1f);
+
+        for (int frame = 0; frame < 60; frame++)
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+        Check("the platform returns home after a full period",
+            platform.Position.DistanceTo(from) < 0.1f);
+
+        root.QueueFree();
+    }
+
+    /// <summary>
+    /// Checks a crumbling platform's whole cycle — warn, drop, vanish, restore.
+    /// </summary>
+    /// <remarks>
+    /// The trigger only reacts to the real player body, so the session's own
+    /// player is teleported onto a standalone platform. That a retry is always
+    /// possible (the platform comes back) is the promise being verified.
+    /// </remarks>
+    private async System.Threading.Tasks.Task CheckCrumblePlatformAsync(GameManager game)
+    {
+        GD.Print("\n-- crumbling platforms");
+
+        var root = new Node3D { Name = "CrumbleSmoke" };
+        AddChild(root);
+
+        var platform = new CrumblePlatform();
+        platform.Configure(new Vector3(3, 0.8f, 3));
+        platform.Position = new Vector3(2500, 0, 0);
+        root.AddChild(platform);
+
+        Vector3 home = platform.Position;
+
+        game.Player.InputLocked = true;
+        game.Player.Respawn(home + new Vector3(0, 1.1f, 0));
+
+        // Warn 0.55 s, fall 1.1 s, gone 2.2 s — sampled around each transition.
+        for (int frame = 0; frame < 60; frame++) // ~1.0 s: falling by now
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+        Check($"the platform drops after being stood on ({platform.Position.Y:F2})",
+            platform.Position.Y < home.Y - 1.0f);
+
+        for (int frame = 0; frame < 60; frame++) // ~2.0 s: gone by now
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+        Check("the platform vanishes while it restores", !platform.Visible);
+
+        for (int frame = 0; frame < 150; frame++) // ~ restore lands near 3.85 s
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+        Check("the platform restores at its home position and is standable again",
+            platform.Visible && platform.Position.DistanceTo(home) < 0.01f);
+
+        game.Player.InputLocked = false;
+        root.QueueFree();
+    }
+
+    /// <summary>
+    /// Checks runs translate to the sync lexicon and back, without libwolfram.
+    /// </summary>
+    /// <remarks>
+    /// Sync is optional; <see cref="Isolith.Sync.RunRecord"/> is pure JSON, so
+    /// its contract — the published record schema — can be pinned without the
+    /// native library being present. A record written by this version must
+    /// read back as the same run, and a repo with junk in it must degrade to
+    /// the records that parse.
+    /// </remarks>
+    private void CheckRunRecord()
+    {
+        GD.Print("\n-- sync record");
+
+        var run = new RunStats
+        {
+            CourseId = "ascent",
+            CourseHash = "deadbeef",
+            TimeMs = 61_234,
+            ShardsCollected = 7,
+            ShardsTotal = 9,
+            Deaths = 2,
+            Jumps = 14,
+            Completed = true,
+            Sections = 3,
+            StartedAt = new DateTimeOffset(2026, 1, 2, 3, 4, 5, 678, TimeSpan.Zero),
+        };
+
+        string body = Isolith.Sync.RunRecord.ToJson(run);
+        string response = $$"""{ "records": [ { "value": {{body}} } ] }""";
+
+        List<RunStats> parsed = Isolith.Sync.RunRecord.ParseListRecords(response);
+
+        Check("a run round-trips through the lexicon record format",
+            parsed.Count == 1
+                && parsed[0].CourseId == "ascent"
+                && parsed[0].CourseHash == "deadbeef"
+                && parsed[0].TimeMs == 61_234
+                && parsed[0].ShardsCollected == 7
+                && parsed[0].ShardsTotal == 9
+                && parsed[0].Deaths == 2
+                && parsed[0].Jumps == 14
+                && parsed[0].Completed
+                && parsed[0].Sections == 3);
+
+        Check("the record schema is readable as a wildcard list of records, date included",
+            parsed[0].StartedAt.Year == 2026 && parsed[0].StartedAt.Millisecond == 678);
+
+        List<RunStats> hostile = Isolith.Sync.RunRecord.ParseListRecords($$"""
+            { "records": [
+                { "value": { "courseId": "ok", "createdAt": "2026-01-02T03:04:05Z" } },
+                { "value": { "courseId": "corrupt" } },
+                { "value": { "createdAt": "2026-01-02T03:04:05Z" } },
+                { "value": "not even an object" },
+                null
+            ] }
+            """);
+
+        Check("junk records are skipped without taking the list down",
+            hostile.Count == 1 && hostile[0].CourseId == "ok");
+
+        Check("a broken response body is an empty list, not a crash",
+            Isolith.Sync.RunRecord.ParseListRecords("}}{{").Count == 0
+                && Isolith.Sync.RunRecord.ParseListRecords("").Count == 0);
+    }
+
+    /// <summary>User-data helpers so history checks can save and restore the real file.</summary>
+    private static string? ReadUserData(string fileName)
+    {
+        string path = $"user://{fileName}";
+        if (!FileAccess.FileExists(path))
+            return null;
+
+        using FileAccess file = FileAccess.Open(path, FileAccess.ModeFlags.Read);
+        return file?.GetAsText();
+    }
+
+    private static void WriteUserData(string fileName, string contents)
+    {
+        using FileAccess file = FileAccess.Open($"user://{fileName}", FileAccess.ModeFlags.Write);
+        file?.StoreString(contents);
+    }
+
+    private static void DeleteUserData(string fileName)
+    {
+        using DirAccess? dir = DirAccess.Open("user://");
+        if (dir is not null && dir.FileExists(fileName))
+            dir.Remove(fileName);
     }
 
     /// <summary>Checks the default input map covers the actions the game reads.</summary>
@@ -189,12 +885,22 @@ public partial class SmokeTest : Node
         Check($"the catalog finds the authored courses ({courses.Count})", courses.Count >= 3);
         Check("course ids are unique",
             courses.Select(entry => entry.Course.Id).Distinct().Count() == courses.Count);
+        Check("the catalog is in a stable order, by course name",
+            courses.Select(entry => entry.Course.Name)
+                .SequenceEqual(courses.Select(entry => entry.Course.Name)
+                    .Order(StringComparer.OrdinalIgnoreCase)));
 
         if (courses.Count >= 2)
         {
             CourseEntry? next = CourseCatalog.Next(courses[0].Path);
             Check("next course wraps to a different course",
                 next is { } entry && entry.Path != courses[0].Path);
+
+            // A path that is not in the catalog (a deleted course, an old
+            // save) must still point somewhere playable, not into nothing.
+            CourseEntry? fallback = CourseCatalog.Next("res://courses/gone.json");
+            Check("asking for the course after a missing one gives the first",
+                fallback is { } found && found.Path == courses[0].Path);
         }
     }
 
@@ -309,7 +1015,8 @@ public partial class SmokeTest : Node
     /// <remarks>
     /// The original values are put back afterwards: this runs against the real
     /// <c>user://</c> directory, which on a developer's machine holds their
-    /// actual settings.
+    /// actual settings. Every range-bearing setting is captured so a failure
+    /// halfway through cannot leave them clobbered.
     /// </remarks>
     private void CheckSettings()
     {
@@ -317,6 +1024,13 @@ public partial class SmokeTest : Node
 
         float zoom = Settings.CameraZoom;
         bool notes = Settings.ShowDirectorNotes;
+        float shake = Settings.CameraShake;
+        float master = Settings.MasterVolume;
+        float effects = Settings.EffectsVolume;
+        bool fullscreen = Settings.Fullscreen;
+        bool autoSync = Settings.AutoSync;
+        string syncHandle = Settings.SyncHandle;
+        string syncService = Settings.SyncService;
 
         try
         {
@@ -330,13 +1044,40 @@ public partial class SmokeTest : Node
             Check($"out-of-range values are clamped, not stored ({Settings.CameraZoom:F0})",
                 Settings.CameraZoom <= 30.0f);
 
+            Settings.CameraShake = 9000.0f;
+            Check("shake is clamped to a sensible ceiling, too", Settings.CameraShake <= 1.0f);
+
+            // Reset restores every setting to its default — the same thing the
+            // settings screen's own "Reset to defaults" button does. Everything
+            // the developer had is captured above and put back in the finally.
+            Settings.CameraShake = 0f;
+            Settings.EffectsVolume = 0f;
+            Settings.Reset();
+
+            Check("reset restores the shake default", Mathf.IsEqualApprox(Settings.CameraShake, 1.0f));
+            Check("reset restores the effects volume default", Mathf.IsEqualApprox(Settings.EffectsVolume, 0.9f));
+            Check($"reset restores the zoom default ({Settings.CameraZoom:F0} m)",
+                Mathf.IsEqualApprox(Settings.CameraZoom, 17.0f));
+            Check("reset clears the sync identity but not the game", string.IsNullOrEmpty(Settings.SyncHandle));
+
             Check($"preferences are written to {Settings.FilePath}",
                 FileAccess.FileExists(Settings.FilePath));
         }
         finally
         {
+            Settings.AutoSync = autoSync;
+            Settings.SyncHandle = syncHandle;
+            Settings.SyncService = syncService;
+            Settings.MasterVolume = master;
             Settings.CameraZoom = zoom;
             Settings.ShowDirectorNotes = notes;
+            Settings.CameraShake = shake;
+            Settings.EffectsVolume = effects;
+
+            // Restored last: it pushes into the engine, and doing it first
+            // would let Apply() below run on the developer's other settings
+            // resolving in between.
+            Settings.Fullscreen = fullscreen;
         }
     }
 
@@ -353,6 +1094,7 @@ public partial class SmokeTest : Node
         GD.Print("\n-- settings reach the game");
 
         float zoom = Settings.CameraZoom;
+        float shake = Settings.CameraShake;
 
         try
         {
@@ -368,12 +1110,36 @@ public partial class SmokeTest : Node
             Check("a fresh session opens at the saved camera zoom",
                 camera is not null && Mathf.IsEqualApprox(camera.Size, 24.0f));
 
+            // The zoom keys clamp inside the same range the setting does.
+            if (camera is not null)
+            {
+                camera.AdjustZoom(-999f);
+                Check($"zooming in clamps at the same floor as the setting ({camera.ViewSize:F1} m)",
+                    Mathf.IsEqualApprox(camera.ViewSize, camera.MinViewSize));
+                camera.AdjustZoom(999f);
+                Check("zooming out clamps at the same ceiling as the setting",
+                    Mathf.IsEqualApprox(camera.ViewSize, camera.MaxViewSize));
+            }
+
+            // Amplitudes are requested in increasing order: shakes stack with
+            // a max, so a later, weaker shake must not inflate an earlier one.
+            Settings.CameraShake = 0f;
+            camera?.Shake(0.4f);
+            Check("zero shake preference stills the camera entirely",
+                camera is null || Mathf.IsEqualApprox(camera.ActiveShakeAmplitude, 0f));
+
+            Settings.CameraShake = 0.5f;
+            camera?.Shake(0.4f);
+            Check("a partial shake preference scales the impact, live",
+                camera is not null && Mathf.IsEqualApprox(camera.ActiveShakeAmplitude, 0.2f));
+
             RemoveChild(session);
             session.QueueFree();
         }
         finally
         {
             Settings.CameraZoom = zoom;
+            Settings.CameraShake = shake;
         }
     }
 

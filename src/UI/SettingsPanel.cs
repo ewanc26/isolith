@@ -21,6 +21,7 @@ public partial class SettingsPanel : CenterContainer
     private HSlider _effects = null!;
     private CheckBox _fullscreen = null!;
     private HSlider _zoom = null!;
+    private HSlider _shake = null!;
     private CheckBox _notes = null!;
 
     public override void _Ready()
@@ -53,6 +54,7 @@ public partial class SettingsPanel : CenterContainer
         _effects.Value = Settings.EffectsVolume;
         _fullscreen.ButtonPressed = Settings.Fullscreen;
         _zoom.Value = Settings.CameraZoom;
+        _shake.Value = Settings.CameraShake;
         _notes.ButtonPressed = Settings.ShowDirectorNotes;
 
         Visible = true;
@@ -97,6 +99,9 @@ public partial class SettingsPanel : CenterContainer
             Settings.CameraZoom, value => Settings.CameraZoom = value,
             value => $"{value:F0} m");
 
+        _shake = MenuKit.SliderRow(column, "Camera shake", 0f, 1f, 0.05f,
+            Settings.CameraShake, value => Settings.CameraShake = value, Percent);
+
         // --- Game ---
         column.AddChild(Section("Game"));
 
@@ -117,6 +122,7 @@ public partial class SettingsPanel : CenterContainer
             _master.Value = Settings.MasterVolume;
             _effects.Value = Settings.EffectsVolume;
             _zoom.Value = Settings.CameraZoom;
+            _shake.Value = Settings.CameraShake;
             _fullscreen.ButtonPressed = Settings.Fullscreen;
             _notes.ButtonPressed = Settings.ShowDirectorNotes;
         });
@@ -125,7 +131,7 @@ public partial class SettingsPanel : CenterContainer
         Button back = MenuKit.MenuButton("Back", Close);
         column.AddChild(back);
 
-        _focusables.AddRange(new Control[] { _master, _effects, _fullscreen, _zoom, _notes, reset, back });
+        _focusables.AddRange(new Control[] { _master, _effects, _fullscreen, _zoom, _shake, _notes, reset, back });
         MenuKit.FocusChain(_focusables.ToArray());
 
         Visible = false;

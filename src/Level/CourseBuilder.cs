@@ -22,6 +22,14 @@ public static class CourseBuilder
     /// <summary>Metadata key marking a body the player should bounce off.</summary>
     public const string BounceMeta = "isolith_bounce";
 
+    /// <summary>Metadata key marking a body with ice physics.</summary>
+    public const string IceMeta = "isolith_ice";
+
+    /// <summary>
+    /// Metadata key holding a conveyor's belt flow as a world-space vector.
+    /// </summary>
+    public const string ConveyorMeta = "isolith_conveyor";
+
     /// <summary>Everything a freshly built course hands back to the game.</summary>
     public sealed record Built(
         Node3D Root,
@@ -69,10 +77,12 @@ public static class CourseBuilder
         Vector3 size = Course.ToVector(block.Size);
 
         // Hazards are pass-through volumes rather than collision geometry: the
-        // player should fall into spikes, not stand on them.
-        if (block.Kind == BlockKind.Hazard)
+        // player should fall into spikes, not stand on them. Wind columns are
+        // the same idea one step further on — they act on the player while
+        // they are inside, so there is nothing to stand on either.
+        if (block.Kind is BlockKind.Hazard or BlockKind.Vent or BlockKind.Gust)
         {
-            AddHazard(root, position, size);
+            AddVolume(root, block.Kind, position, size, block.Flow);
             return;
         }
 
@@ -85,12 +95,13 @@ public static class CourseBuilder
             return;
         }
 
-        // Solid, Grass, and Bounce are the only kinds meant to reach here —
-        // Hazard and Crumble return above. Anything else is a BlockKind added
-        // to the enum without a matching case here, or bad course data; either
-        // way it should be visible rather than silently rendered as plain
-        // geometry.
-        if (block.Kind is not (BlockKind.Solid or BlockKind.Grass or BlockKind.Bounce))
+        // Solid, Grass, Bounce, Ice, and Conveyor are the only kinds meant to
+        // reach here — Hazard and Crumble return above. Anything else is a
+        // BlockKind added to the enum without a matching case here, or bad
+        // course data; either way it should be visible rather than silently
+        // rendered as plain geometry.
+        if (block.Kind is not (BlockKind.Solid or BlockKind.Grass
+            or BlockKind.Bounce or BlockKind.Ice or BlockKind.Conveyor))
             GD.PushWarning($"Isolith: unhandled BlockKind '{block.Kind}', building it as solid geometry.");
 
         var body = new StaticBody3D
@@ -104,25 +115,65 @@ public static class CourseBuilder
         if (block.Kind == BlockKind.Bounce)
             body.SetMeta(BounceMeta, true);
 
+        if (block.Kind == BlockKind.Ice)
+            body.SetMeta(IceMeta, true);
+
+        // A conveyor without a usable flow is a content error, not a crash:
+        // warn loudly and let it behave as ordinary solid geometry.
+        if (block.Kind == BlockKind.Conveyor)
+        {
+            Vector3 flow = block.Flow is { Length: >= 2 }
+                ? new Vector3(block.Flow[0], 0f, block.Flow[1])
+                : Vector3.Zero;
+
+            if (flow.LengthSquared() < 0.0001f)
+                GD.PushWarning("Isolith: a Conveyor block has no usable 'flow', building it as solid geometry.");
+            else
+                body.SetMeta(ConveyorMeta, flow);
+        }
+
         body.AddChild(BoxShape(size));
         body.AddChild(BoxMesh(size, Palette.ForBlock(block.Kind)));
         root.AddChild(body);
     }
 
-    private static void AddHazard(Node3D root, Vector3 position, Vector3 size)
+    private static void AddVolume(Node3D root, BlockKind kind, Vector3 position, Vector3 size, float[]? flow = null)
     {
-        var area = new Hazard
+        if (kind == BlockKind.Gust)
         {
-            Name = "Hazard",
-            Position = position,
-            CollisionLayer = Mask(Layers.Trigger),
-            CollisionMask = Mask(Layers.Player),
-            Monitoring = true,
-        };
+            // A gust without a usable flow is a content error, not a crash:
+            // warn loudly and build nothing, so it can never be mistaken for
+            // a wall the player cannot pass.
+            if (flow is not { Length: >= 2 })
+            {
+                GD.PushWarning("Isolith: a Gust block has no usable 'flow', building nothing.");
+                return;
+            }
 
-        area.AddChild(BoxShape(size));
-        area.AddChild(BoxMesh(size, Palette.Spike));
-        root.AddChild(area);
+            var gust = new GustField();
+            gust.Configure(new Vector3(flow[0], 0f, flow[1]));
+            FinishVolume(gust, root, position, size, Palette.Updraft);
+            return;
+        }
+
+        Area3D volume = kind == BlockKind.Vent
+            ? new Updraft()
+            : new Hazard { Name = "Hazard" };
+
+        FinishVolume(volume, root, position, size, kind == BlockKind.Vent ? Palette.Updraft : Palette.Spike);
+    }
+
+    /// <summary>Positioning, masks and shape shared by every wind or hazard volume.</summary>
+    private static void FinishVolume(Area3D volume, Node3D root, Vector3 position, Vector3 size, StandardMaterial3D material)
+    {
+        volume.Position = position;
+        volume.CollisionLayer = Mask(Layers.Trigger);
+        volume.CollisionMask = Mask(Layers.Player);
+        volume.Monitoring = true;
+
+        volume.AddChild(BoxShape(size));
+        volume.AddChild(BoxMesh(size, material));
+        root.AddChild(volume);
     }
 
     private static void AddMover(Node3D root, MoverDef mover)
