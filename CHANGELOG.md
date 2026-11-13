@@ -1,7 +1,7 @@
 # Changelog
 
 Isolith versions follow the project's single source of truth in
-[`isolith.csproj`](isolith.csproj) (`<Version>`). Entries are grouped by
+[`Isolith.csproj`](Isolith.csproj) (`<Version>`). Entries are grouped by
 release, newest first.
 
 ## 0.2.0 (unreleased)
@@ -34,6 +34,10 @@ Platforming surface vocabulary and accessibility for the feedback it produces.
 - New setting: **camera shake** (0–1). Landing thuds, deaths, bounces, and
   dashes can be dialled back or stilled entirely without touching gameplay or
   run validity.
+- New **How to play** screen, reachable from both the title screen and the pause
+  menu: every control and every special surface in one two-column reference, so
+  a player can meet ice, a belt, a vent, or a gust before one of them kills
+  them.
 - Zoom controls and the settings slider clamp into one shared range, verified
   by the smoke test.
 

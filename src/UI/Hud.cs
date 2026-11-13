@@ -41,7 +41,9 @@ public partial class Hud : CanvasLayer
     private PanelContainer _pausePanel = null!;
     private Label _pauseHint = null!;
     private Button _resumeButton = null!;
+    private Button _mechanicsButton = null!;
     private SettingsPanel _settings = null!;
+    private MechanicsPanel _mechanics = null!;
     private ColorRect _modalScrim = null!;
     private Label _controls = null!;
     private bool _lastUsingGamepad;
@@ -75,6 +77,7 @@ public partial class Hud : CanvasLayer
         _game.RunCompleted -= OnRunCompleted;
         _game.SectionCompleted -= OnSectionCompleted;
         _settings.Closed -= CloseSettings;
+        _mechanics.Closed -= CloseMechanics;
     }
 
     public override void _Process(double delta)
@@ -272,11 +275,13 @@ public partial class Hud : CanvasLayer
         Button resume = MenuKit.MenuButton("Resume", _game.TogglePause);
         Button restart = MenuKit.MenuButton("Restart", _game.Restart);
         Button settings = MenuKit.MenuButton("Settings", OpenSettings);
+        Button mechanics = MenuKit.MenuButton("How to play", OpenMechanics);
         Button menu = MenuKit.MenuButton("Main menu", () => MainMenu.ReturnToMenu(GetTree()));
 
         column.AddChild(resume);
         column.AddChild(restart);
         column.AddChild(settings);
+        column.AddChild(mechanics);
         column.AddChild(menu);
 
         var hint = Readout("");
@@ -285,8 +290,9 @@ public partial class Hud : CanvasLayer
         _pauseHint = hint;
         column.AddChild(hint);
 
-        MenuKit.FocusChain(resume, restart, settings, menu);
+        MenuKit.FocusChain(resume, restart, settings, mechanics, menu);
         _resumeButton = resume;
+        _mechanicsButton = mechanics;
 
         _pausePanel.Visible = false;
     }
@@ -308,7 +314,14 @@ public partial class Hud : CanvasLayer
         _settings = new SettingsPanel { Name = "SettingsPanel" };
         AddChild(_settings);
 
+        // The mechanics reference shares the pause menu's scrim and the same
+        // one-panel-at-a-time rule. It is added after settings so it would draw
+        // above it, though the two are never open together.
+        _mechanics = new MechanicsPanel { Name = "MechanicsPanel" };
+        AddChild(_mechanics);
+
         _settings.Closed += CloseSettings;
+        _mechanics.Closed += CloseMechanics;
     }
 
     private void OpenSettings()
@@ -335,6 +348,32 @@ public partial class Hud : CanvasLayer
 
         if (_pausePanel.Visible)
             MenuKit.Focus(_resumeButton);
+    }
+
+    private void OpenMechanics()
+    {
+        // Same rule as settings: the pause menu goes away rather than sitting
+        // underneath as a second focusable layer.
+        _pausePanel.Visible = false;
+        _modalScrim.Visible = true;
+
+        // Suppresses the Hud's own pause and restart handling while the panel
+        // is up, so Escape backs out of the reference instead of unpausing.
+        _game.SetUiFocus(true);
+        _mechanics.Open();
+    }
+
+    private void CloseMechanics()
+    {
+        _modalScrim.Visible = false;
+        _game.SetUiFocus(false);
+
+        // Return to the button that opened it, so a pad player is put back
+        // exactly where they left off.
+        _pausePanel.Visible = _game.State == GameState.Paused;
+
+        if (_pausePanel.Visible)
+            MenuKit.Focus(_mechanicsButton);
     }
 
     private void BuildFooter()
@@ -382,7 +421,9 @@ public partial class Hud : CanvasLayer
     private void OnStateChanged(GameState state)
     {
         _completePanel.Visible = state == GameState.Complete;
-        _pausePanel.Visible = state == GameState.Paused && !_settings.Visible;
+        _pausePanel.Visible = state == GameState.Paused
+            && !_settings.Visible
+            && !_mechanics.Visible;
 
         if (state == GameState.Paused)
         {
