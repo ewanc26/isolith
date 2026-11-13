@@ -447,6 +447,7 @@ grows past a few panels, revisit this — it is a pragmatic choice, not dogma.
 | `MenuKit.cs` | Shared widgets, styling, and focus wiring |
 | `MainMenu.cs` | The title screen, and the only place that starts or ends a session |
 | `SettingsPanel.cs` | One settings screen, shown by both the title screen and the pause menu |
+| `MechanicsPanel.cs` | The controls and surface reference, shown by both the title screen and the pause menu |
 | `Hud.cs` | In-game overlay, the pause menu, and pause/restart input |
 | `SyncPanel.cs` | The optional sync panel |
 
@@ -558,6 +559,7 @@ sizes are **full extents**. A block's walkable surface is at
 | `Ice` | Solid collision with near-zero friction; momentum carries and steering is mushy |
 | `Conveyor` | Solid collision that drags the player along its `flow: [x, z]`, magnitude in m/s |
 | `Vent` | `Area3D` wind column; catches the player, lifts while inside, caps the rise |
+| `Gust` | `Area3D` horizontal wind wall; pushes toward its `flow` up to the wind's speed, and leaves faster movers alone |
 | `Crumble` | Shakes, drops, and restores after ~3.9 s |
 
 **Mover:** `{ "from": […], "to": […], "size": […], "period": s, "phase": 0–1 }`
@@ -793,7 +795,8 @@ Commit by scope — one logical change per commit, not one commit per session.
 3. Handle it in `CourseBuilder.AddBlock`.
 4. If it needs behaviour on contact, prefer metadata + a check in the relevant
    system over new logic in `PlayerController`.
-5. Document it in §7 and in `README.md`.
+5. Document it in §7, in `README.md`, and in `MechanicsPanel` — the smoke test
+   fails if a non-ground block kind is missing from the how-to-play screen.
 
 **Add a course**
 Drop the JSON in `courses/`, then run the smoke test. It is discovered

@@ -19,10 +19,11 @@ repo — see [Stat sync](#stat-sync-optional), which is genuinely optional.
   height, separate rise/fall gravity, and a directional dash that adds reach
   without ever being required.
 - **Seven hand-authored courses** — The Ascent, The Abyss, Zenith, Frostline,
-  Slipstream, Crosswinds, and Windfall, chosen from the title screen, with a best time per
-  course and a "next course" flow when you finish one.
-  from the title screen, with a best time per course and a "next course" flow
-  when you finish one.
+  Slipstream, Crosswinds, and Windfall, chosen from the title screen, with a best
+  time per course and a "next course" flow when you finish one.
+- **How to play, in the game** — a reference screen lists the controls and every
+  special surface a course can put under you, reachable from the title and pause
+  menus without leaving the run.
 - **Gamepad first** — the analog stick drives speed directly; keyboard is the
   fallback, and on-screen hints follow whichever you last touched. Every menu is
   fully navigable with a stick and two buttons, and the smoke test fails if a
@@ -103,7 +104,11 @@ a normal jump, so a dash can only make a crossing easier, never necessary.
 Bindings live in [`src/Core/GameInput.cs`](src/Core/GameInput.cs) rather than in
 `project.godot`, so they stay readable in a diff.
 
-Pausing opens a menu — resume, restart, settings, or back to the title screen.
+Pausing opens a menu — resume, restart, settings, how to play, or back to the
+title screen. **How to play** is also on the title screen, and lists the
+controls plus the special surfaces (ice, conveyors, vents, gusts, crumbling
+platforms, bounce pads, and spikes) so you can meet a mechanic before one of
+them kills you.
 
 ![The pause menu](docs/shots/paused.png)
 
@@ -290,11 +295,11 @@ src/Gameplay/   Player, camera, course objects, game manager
 src/Level/      Course format, builder, palette
 src/Level/Generation/  Endless mode: director, generator, jump envelope
 src/Sync/       Optional AT Protocol sync (interop + service)
-src/UI/         Title screen, settings, HUD and sync panel
+src/UI/         Title screen, settings, how to play, HUD and sync panel
 tools/          Asset generators and CC0 asset fetcher
 ```
 
-The version lives in [`isolith.csproj`](isolith.csproj) and the release history
+The version lives in [`Isolith.csproj`](Isolith.csproj) and the release history
 in [`CHANGELOG.md`](CHANGELOG.md).
 
 All runtime code is C#. GDScript is reserved for editor-only tooling, and
