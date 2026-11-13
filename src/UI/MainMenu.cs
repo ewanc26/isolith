@@ -27,10 +27,12 @@ public partial class MainMenu : Control
 
     private SettingsPanel _settings = null!;
     private CourseSelectionPanel _courseSelection = null!;
+    private MechanicsPanel _mechanics = null!;
     private Control _root = null!;
     private Label _best = null!;
     private Button _settingsButton = null!;
     private Button _coursesButton = null!;
+    private Button _mechanicsButton = null!;
 
     public override void _Ready()
     {
@@ -69,11 +71,13 @@ public partial class MainMenu : Control
 
         Button endless = MenuKit.MenuButton("Endless run", () => StartGame(GameMode.Endless));
         Button courses = MenuKit.MenuButton("Courses", () => _courseSelection.Open(() => ShowMain()));
+        Button howTo = MenuKit.MenuButton("How to play", () => _mechanics.Open());
         Button settings = MenuKit.MenuButton("Settings", () => _settings.Open());
         Button quit = MenuKit.MenuButton("Quit", () => GetTree().Quit());
 
         column.AddChild(endless);
         column.AddChild(courses);
+        column.AddChild(howTo);
         column.AddChild(settings);
         column.AddChild(quit);
 
@@ -89,6 +93,7 @@ public partial class MainMenu : Control
 
         _settingsButton = settings;
         _coursesButton = courses;
+        _mechanicsButton = howTo;
 
         _settings = new SettingsPanel { Name = "SettingsPanel" };
         AddChild(_settings);
@@ -97,18 +102,28 @@ public partial class MainMenu : Control
         AddChild(_courseSelection);
         _courseSelection.CourseSelected += course => StartAuthoredCourse(course.Path);
 
+        _mechanics = new MechanicsPanel { Name = "MechanicsPanel" };
+        AddChild(_mechanics);
+
         _settings.Closed += () =>
         {
             _root.Visible = true;
             MenuKit.Focus(_settingsButton);
         };
 
+        _mechanics.Closed += () =>
+        {
+            _root.Visible = true;
+            MenuKit.Focus(_mechanicsButton);
+        };
+
         // Opening settings hides the menu behind it rather than stacking two
         // focusable layers, which would let the stick wander between them.
         settings.Pressed += () => _root.Visible = false;
         courses.Pressed += () => _root.Visible = false;
+        howTo.Pressed += () => _root.Visible = false;
 
-        MenuKit.FocusChain(endless, courses, settings, quit);
+        MenuKit.FocusChain(endless, courses, howTo, settings, quit);
         MenuKit.Focus(endless);
     }
 

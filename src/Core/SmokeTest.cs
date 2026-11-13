@@ -1007,6 +1007,26 @@ public partial class SmokeTest : Node
         foreach (Button button in stranded)
             GD.PrintErr($"        stranded: {button.Name} \"{button.Text}\"");
 
+        // The how-to-play screen is the only in-game explanation of the surface
+        // vocabulary, and it is easy to add a block kind without noticing it.
+        // Solid and Grass are ordinary ground and deliberately absent.
+        List<MechanicsPanel> mechanics = FindAll<MechanicsPanel>(menu);
+        Check("the how-to-play screen exists and starts hidden",
+            mechanics.Count == 1 && !mechanics[0].Visible);
+
+        List<Label> labels = FindAll<Label>(menu);
+        List<string> missing = Enum.GetValues<BlockKind>()
+            .Where(kind => kind is not (BlockKind.Solid or BlockKind.Grass))
+            .Where(kind => !labels.Exists(label => label.Text == kind.ToString()))
+            .Select(kind => kind.ToString())
+            .ToList();
+
+        Check($"the how-to-play screen names every special surface ({missing.Count} missing)",
+            missing.Count == 0);
+
+        foreach (string surface in missing)
+            GD.PrintErr($"        missing surface: {surface}");
+
         RemoveChild(menu);
         menu.QueueFree();
     }
