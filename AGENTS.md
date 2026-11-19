@@ -775,9 +775,72 @@ harness. It is cheap and it already has a real scene running.
 Conventional commits, scoped by area:
 
 ```
-feat(gameplay): add wall-slide to the 
+feat(gameplay): add wall-slide to the player controller
+fix(level): correct crumble platform restore position
+docs(sync): explain app password handling
+```
 
-... [Content truncated]
+Scopes in use: `build`, `core`, `level`, `gameplay`, `ui`, `sync`, `content`,
+`assets`, `test`, `ci`, `docs`.
+
+Commit by scope — one logical change per commit, not one commit per session.
+
+---
+
+## 14. Common tasks
+
+**Add a block kind**
+1. Add to `BlockKind` in `Course.cs`.
+2. Give it a material in `Palette.ForBlock`.
+3. Handle it in `CourseBuilder.AddBlock`.
+4. If it needs behaviour on contact, prefer metadata + a check in the relevant
+   system over new logic in `PlayerController`.
+5. Document it in §7, in `README.md`, and in `MechanicsPanel` — the smoke test
+   fails if a non-ground block kind is missing from the how-to-play screen.
+
+**Add a course**
+Drop the JSON in `courses/`, then run the smoke test. It is discovered
+automatically.
+
+**Retune the player**
+Change the exported defaults, then recompute §6 and update `README.md`. Existing
+course times are not invalidated by tuning changes — only course *edits* change
+the hash — so consider whether a tuning change should be paired with a course
+version bump.
+
+**Add a sync operation**
+Follow §9's four steps. Keep it out of `Gameplay`.
+
+---
+
+## 15. Things that look wrong but are not
+
+- **`GameInput` registering bindings in code.** Deliberate; see §5.
+- **The `-2.0` grounded velocity in `PlayerController`.** Keeps `IsOnFloor()`
+  stable. Removing it breaks coyote time.
+- **`IsometricCamera.Yaw` returning the target, not the current, yaw.** Keeps
+  held input meaningful during a rotation.
+- **`Course` fully qualified as `Level.Course.Load(…)` in `GameManager`.** The
+  property and the type share a name; the qualification is for the reader.
+- **UI built in C# instead of `.tscn`.** See §5.
+- **`native/*.dylib` gitignored.** The SDK is built from its own repo, not
+  vendored.
+- **"resources still in use at exit" after the smoke test.** Godot's audio
+  server holds the two clips that actually played, plus their playback objects,
+  past `_ExitTree`. `Sfx._ExitTree` already stops every voice, clears its
+  streams and disposes them; the references that remain are engine-side
+  teardown ordering, not ours. Exit code is still 0. Don't chase it.
+- **`_ = RunAsync()` in `SmokeTest._Ready()`.** Godot cannot `await` in
+  `_Ready`; the coroutine is intentionally fire-and-forget and ends by calling
+  `GetTree().Quit()`.
+
+---
+
+## 16. Related
+
+- [wolfram](https://github.com/ewanc26/wolfram) — the C11 AT Protocol SDK this
+  syncs through.
+- [`lexicons/uk/ewancroft/isolith/run.json`](lexicons/uk/ewancroft/isolith/run.json) — the run record schema.
 
 <!-- allowed-agents -->
 ## Allowed agents
