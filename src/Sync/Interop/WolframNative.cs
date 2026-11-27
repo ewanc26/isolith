@@ -53,10 +53,17 @@ internal static unsafe partial class WolframNative
     }
 
     /// <summary>
-    /// Mirrors <c>wf_response</c>. Release with <see cref="wf_response_free"/>.
+    /// Mirrors the start of <c>wf_response</c>. Release with
+    /// <see cref="wf_response_free"/>.
     /// <c>status</c> is a C <c>long</c>, which is 8 bytes on Unix and 4 on
     /// Windows — <see cref="CLong"/> tracks that per-platform.
     /// </summary>
+    /// <remarks>
+    /// The caller allocates this struct and native code writes all of
+    /// <c>sizeof(wf_response)</c> into it, so it must never be smaller than the
+    /// C struct. Wolfram appends fields between releases; the ones this game
+    /// does not read are covered by <see cref="Reserved"/>.
+    /// </remarks>
     [StructLayout(LayoutKind.Sequential)]
     internal struct Response
     {
@@ -64,6 +71,9 @@ internal static unsafe partial class WolframNative
         public IntPtr Body;
         public nuint BodyLen;
         public IntPtr DpopNonce;
+
+        /// <summary>Unread trailing fields and room for new ones (256 bytes).</summary>
+        public fixed ulong Reserved[32];
     }
 
     // ---------------------------------------------------------------------

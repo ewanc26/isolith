@@ -40,6 +40,8 @@ Platforming surface vocabulary and accessibility for the feedback it produces.
   them.
 - Zoom controls and the settings slider clamp into one shared range, verified
   by the smoke test.
+- Fixed: reading or listing sync records let libwolfram write past the end of the
+  managed copy of its response structure, which had fallen behind the C one.
 
 ## 0.1.0
 
